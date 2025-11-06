@@ -560,6 +560,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       if (outFormat === 'gif') {
         console.log('GIF export detected, using specialized GIF encoder');
         invariant(filePath != null);
+        const cropFilterString = cropRect ? `crop=${cropRect.width}:${cropRect.height}:${cropRect.x}:${cropRect.y}` : undefined;
         await exportGif({
           cutFrom: desiredCutFrom,
           cutTo,
@@ -568,6 +569,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           fps: gifFps,
           width: gifWidth,
           onProgress: (progress) => onSingleProgress(i, progress),
+          cropFilter: cropFilterString,
         });
         return { path: finalOutPath, created: true };
       }
@@ -1075,13 +1077,14 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     return ipcRenderer.invoke('checkGifskiAvailable');
   }, []);
 
-  const exportGifWithFFmpeg = useCallback(async ({ cutFrom, cutTo, outPath, fps = 10, width = 480, onProgress }: {
+  const exportGifWithFFmpeg = useCallback(async ({ cutFrom, cutTo, outPath, fps = 10, width = 480, onProgress, cropFilter }: {
     cutFrom: number,
     cutTo: number,
     outPath: string,
     fps: number,
     width: number,
     onProgress: (p: number) => void,
+    cropFilter?: string,
   }) => {
     invariant(filePath != null);
     const duration = cutTo - cutFrom;
@@ -1091,13 +1094,17 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
 
     console.log('Exporting GIF with FFmpeg (two-pass palette method)');
 
+    // Build filter chain with optional crop
+    const baseFilters = cropFilter ? `${cropFilter},fps=${fps},scale=${width}:-1:flags=lanczos` : `fps=${fps},scale=${width}:-1:flags=lanczos`;
+    const paletteUseFilters = cropFilter ? `${cropFilter},fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle` : `fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`;
+
     // Pass 1: Generate optimized palette
     const paletteArgs = [
       '-hide_banner',
       '-ss', cutFrom.toFixed(5),
       '-t', duration.toFixed(5),
       '-i', filePath,
-      '-vf', `fps=${fps},scale=${width}:-1:flags=lanczos,palettegen=stats_mode=diff`,
+      '-vf', `${baseFilters},palettegen=stats_mode=diff`,
       '-y', palettePath,
     ];
 
@@ -1111,7 +1118,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       '-t', duration.toFixed(5),
       '-i', filePath,
       '-i', palettePath,
-      '-lavfi', `fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+      '-lavfi', paletteUseFilters,
       '-y', outPath,
     ];
 
@@ -1124,13 +1131,14 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     console.log('GIF export completed with FFmpeg');
   }, [appendFfmpegCommandLog, filePath]);
 
-  const exportGifWithGifski = useCallback(async ({ cutFrom, cutTo, outPath, fps = 15, width = 480, onProgress }: {
+  const exportGifWithGifski = useCallback(async ({ cutFrom, cutTo, outPath, fps = 15, width = 480, onProgress, cropFilter }: {
     cutFrom: number,
     cutTo: number,
     outPath: string,
     fps: number,
     width: number,
     onProgress: (p: number) => void,
+    cropFilter?: string,
   }) => {
     invariant(filePath != null);
     const duration = cutTo - cutFrom;
@@ -1146,12 +1154,13 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
 
       // Step 1: Extract frames as PNG with FFmpeg
       const framesPattern = join(tempDir, 'frame_%04d.png');
+      const extractFilters = cropFilter ? `${cropFilter},fps=${fps},scale=${width}:-1:flags=lanczos` : `fps=${fps},scale=${width}:-1:flags=lanczos`;
       const extractArgs = [
         '-hide_banner',
         '-ss', cutFrom.toFixed(5),
         '-t', duration.toFixed(5),
         '-i', filePath,
-        '-vf', `fps=${fps},scale=${width}:-1:flags=lanczos`,
+        '-vf', extractFilters,
         framesPattern,
       ];
 
@@ -1188,7 +1197,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     }
   }, [appendFfmpegCommandLog, filePath]);
 
-  const exportGif = useCallback(async ({ cutFrom, cutTo, outPath, preferredEncoder, fps, width, onProgress }: {
+  const exportGif = useCallback(async ({ cutFrom, cutTo, outPath, preferredEncoder, fps, width, onProgress, cropFilter }: {
     cutFrom: number,
     cutTo: number,
     outPath: string,
@@ -1196,15 +1205,16 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     fps: number,
     width: number,
     onProgress: (p: number) => void,
+    cropFilter?: string,
   }) => {
     const gifskiAvailable = await checkGifskiAvailable();
 
     // Use gifski if available and preferred, otherwise fall back to ffmpeg
     if (preferredEncoder === 'gifski' && gifskiAvailable) {
-      return exportGifWithGifski({ cutFrom, cutTo, outPath, fps, width, onProgress });
+      return exportGifWithGifski({ cutFrom, cutTo, outPath, fps, width, onProgress, cropFilter });
     }
 
-    return exportGifWithFFmpeg({ cutFrom, cutTo, outPath, fps, width, onProgress });
+    return exportGifWithFFmpeg({ cutFrom, cutTo, outPath, fps, width, onProgress, cropFilter });
   }, [checkGifskiAvailable, exportGifWithFFmpeg, exportGifWithGifski]);
 
   return {
