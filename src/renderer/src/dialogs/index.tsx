@@ -608,6 +608,33 @@ export async function askForPlaybackRate({ detectedFps, outputPlaybackRate }: { 
   return parseValue(value);
 }
 
+async function checkIfDirectMedia(url: string): Promise<boolean> {
+  try {
+    // Make a HEAD request to check Content-Type
+    const response = await fetch(url, { method: 'HEAD' });
+
+    if (!response.ok) return false;
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType) return false;
+
+    // Check if it's a media type that FFmpeg can handle directly
+    const mediaTypes = [
+      'video/',
+      'audio/',
+      'application/vnd.apple.mpegurl', // m3u8
+      'application/x-mpegurl', // m3u8
+      'application/dash+xml', // DASH
+    ];
+
+    return mediaTypes.some(type => contentType.toLowerCase().includes(type));
+  } catch (err) {
+    // If HEAD request fails, we can't determine, so return false
+    console.log('HEAD request failed:', err);
+    return false;
+  }
+}
+
 export async function promptDownloadMediaUrl(outPath: string) {
   const { value } = await getSwal().Swal.fire<string>({
     title: i18n.t('Open media from URL'),
@@ -619,6 +646,55 @@ export async function promptDownloadMediaUrl(outPath: string) {
 
   if (!value) return false;
 
-  await downloadMediaUrl(value, outPath);
+  let urlToDownload = value;
+
+  // Check if this is direct media by inspecting Content-Type
+  const isDirectMedia = await checkIfDirectMedia(value);
+
+  if (!isDirectMedia) {
+    // Not direct media, try yt-dlp if available
+    const { ipcRenderer } = window.require('electron');
+    const ytDlpAvailable = await ipcRenderer.invoke('checkYtDlpAvailable');
+
+    if (ytDlpAvailable) {
+      // Show a progress indicator while extracting
+      getSwal().Swal.fire({
+        title: i18n.t('Extracting stream URL...'),
+        text: i18n.t('This does not appear to be direct media. Using yt-dlp to extract the stream URL...'),
+        allowOutsideClick: false,
+        didOpen: () => {
+          getSwal().Swal.showLoading();
+        },
+      });
+
+      // Try to extract the direct URL using yt-dlp
+      const extractedUrl = await ipcRenderer.invoke('extractStreamUrl', value);
+
+      getSwal().Swal.close();
+
+      if (extractedUrl) {
+        console.log('Successfully extracted direct URL using yt-dlp');
+        urlToDownload = extractedUrl;
+      } else {
+        // Extraction failed
+        await getSwal().Swal.fire({
+          icon: 'error',
+          title: i18n.t('Could not extract stream URL'),
+          text: i18n.t('This URL does not appear to be direct media, and yt-dlp could not extract a stream URL from it. Please check the URL and try again.'),
+        });
+        return false;
+      }
+    } else {
+      // yt-dlp not available, fail with helpful message
+      await getSwal().Swal.fire({
+        icon: 'error',
+        title: i18n.t('URL not supported'),
+        html: i18n.t('This URL does not appear to be direct media (like .mp4, .m3u8, etc.). To open URLs from streaming sites like YouTube, Twitch, or Vimeo, please install yt-dlp on your system.<br><br>Visit <a href="https://github.com/yt-dlp/yt-dlp#installation" target="_blank">https://github.com/yt-dlp/yt-dlp#installation</a> for installation instructions.'),
+      });
+      return false;
+    }
+  }
+
+  await downloadMediaUrl(urlToDownload, outPath);
   return true;
 }

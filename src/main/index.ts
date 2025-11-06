@@ -358,6 +358,50 @@ function initApp() {
     }
   });
 
+  ipcMain.handle('checkYtDlpAvailable', async () => {
+    try {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      const result = await execFileAsync('yt-dlp', ['--version']);
+      logger.info('yt-dlp detected:', result.stdout.trim());
+      return true;
+    } catch (err) {
+      logger.info('yt-dlp not available:', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  });
+
+  ipcMain.handle('extractStreamUrl', async (_e, url: string) => {
+    try {
+      logger.info('Extracting stream URL with yt-dlp for:', url);
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+
+      // Use yt-dlp to extract the direct stream URL
+      // -f "bestvideo+bestaudio/best" - get best quality
+      // -g - print direct URLs only
+      const result = await execFileAsync('yt-dlp', ['-f', 'bestvideo+bestaudio/best', '-g', url]);
+      const urls = result.stdout.trim().split('\n').filter(line => line.match(/^https?:\/\//));
+
+      if (urls.length > 0) {
+        logger.info('yt-dlp extracted URL(s):', urls.length, 'URL(s)');
+        // Return the first URL (usually video, or combined if single stream)
+        return urls[0];
+      }
+
+      logger.warn('yt-dlp did not return any URLs');
+      return null;
+    } catch (err) {
+      logger.error('yt-dlp extraction failed:', err instanceof Error ? err.message : String(err));
+      if (err && typeof err === 'object' && 'stderr' in err) {
+        logger.error('yt-dlp stderr:', err.stderr);
+      }
+      return null;
+    }
+  });
+
   ipcMain.on('apiActionResponse', (_e, { id }) => {
     apiActionRequests.get(id)?.();
   });
