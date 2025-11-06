@@ -210,7 +210,6 @@ export function CropOverlay({ videoElement, cropRect, onChange }: CropOverlayPro
     border: '2px solid black',
     borderRadius: '50%',
     cursor: 'pointer',
-    zIndex: 10,
   };
 
   return (
