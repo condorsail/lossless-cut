@@ -130,6 +130,9 @@ export interface Config {
   thumbnailsEnabled: boolean,
   keyframesEnabled: boolean,
   reducedMotion: 'always' | 'never' | 'user',
+  gifEncoder: 'gifski' | 'ffmpeg',
+  gifFps: number,
+  gifWidth: number,
 }
 
 export interface Waveform {

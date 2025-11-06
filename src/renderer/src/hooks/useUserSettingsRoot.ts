@@ -191,6 +191,12 @@ export default function useUserSettingsRoot() {
   useEffect(() => safeSetConfig({ keyframesEnabled }), [keyframesEnabled]);
   const [reducedMotion, setReducedMotion] = useState(safeGetConfigInitial('reducedMotion'));
   useEffect(() => safeSetConfig({ reducedMotion }), [reducedMotion]);
+  const [gifEncoder, setGifEncoder] = useState(safeGetConfigInitial('gifEncoder'));
+  useEffect(() => safeSetConfig({ gifEncoder }), [gifEncoder]);
+  const [gifFps, setGifFps] = useState(safeGetConfigInitial('gifFps'));
+  useEffect(() => safeSetConfig({ gifFps }), [gifFps]);
+  const [gifWidth, setGifWidth] = useState(safeGetConfigInitial('gifWidth'));
+  useEffect(() => safeSetConfig({ gifWidth }), [gifWidth]);
 
 
   const resetKeyBindings = useCallback(() => {
@@ -292,6 +298,9 @@ export default function useUserSettingsRoot() {
     thumbnailsEnabled,
     keyframesEnabled,
     reducedMotion,
+    gifEncoder,
+    gifFps,
+    gifWidth,
   };
 
   return {
@@ -370,6 +379,9 @@ export default function useUserSettingsRoot() {
     prefersReducedMotion,
     setReducedMotion,
     springAnimation,
+    setGifEncoder,
+    setGifFps,
+    setGifWidth,
   };
 }
 
