@@ -198,6 +198,14 @@ function App() {
 
   useEffect(() => setDocumentTitle({ filePath, working: working?.text, progress }), [progress, filePath, working?.text]);
 
+  // Reset crop mode when file changes
+  useEffect(() => {
+    if (cropMode) {
+      setCropMode(false);
+      setCropRect(null);
+    }
+  }, [filePath]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => setProgressBar(progress ?? -1), [progress]);
 
   useEffect(() => {
@@ -402,7 +410,17 @@ function App() {
   const toggleCropMode = useCallback(() => {
     if (!cropMode && videoRef.current) {
       // Initialize to 80% centered crop when enabling
-      const { videoWidth, videoHeight } = videoRef.current;
+      // Try to get dimensions from video element first, fall back to stream metadata
+      let videoWidth = videoRef.current.videoWidth;
+      let videoHeight = videoRef.current.videoHeight;
+
+      // If video element dimensions aren't available (e.g., FFmpeg-assisted playback),
+      // use dimensions from the video stream metadata
+      if ((!videoWidth || !videoHeight) && activeVideoStream) {
+        videoWidth = activeVideoStream.width || 0;
+        videoHeight = activeVideoStream.height || 0;
+      }
+
       if (videoWidth && videoHeight) {
         const w = Math.floor(videoWidth * 0.8 / 2) * 2; // Ensure even
         const h = Math.floor(videoHeight * 0.8 / 2) * 2;
@@ -415,7 +433,7 @@ function App() {
       }
     }
     setCropMode(!cropMode);
-  }, [cropMode]);
+  }, [cropMode, activeVideoStream]);
 
   const { ensureWritableOutDir, ensureAccessToSourceDir } = useDirectoryAccess({ setCustomOutDir });
 
