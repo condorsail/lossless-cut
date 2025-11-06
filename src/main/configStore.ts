@@ -254,6 +254,22 @@ export async function init({ customConfigDir }: { customConfigDir: string | unde
     set('cleanupChoices', { ...cleanupChoices, closeFile: true });
   }
 
+  // Migrate keyBindings to include new crop mode binding
+  const keyBindings: KeyBinding[] = store.get('keyBindings');
+  const hasToggleCropMode = keyBindings.some((binding) => binding.action === 'toggleCropMode');
+  if (!hasToggleCropMode) {
+    logger.info('Migrating keyBindings: adding toggleCropMode (KeyX)');
+    const newBinding: KeyBinding = { keys: 'KeyX', action: 'toggleCropMode' };
+    // Insert after increaseRotation to match default order
+    const rotationIndex = keyBindings.findIndex((b) => b.action === 'increaseRotation');
+    if (rotationIndex >= 0) {
+      keyBindings.splice(rotationIndex + 1, 0, newBinding);
+    } else {
+      keyBindings.push(newBinding);
+    }
+    set('keyBindings', keyBindings);
+  }
+
   const configVersion: number = store.get('version');
 
   // todo remove after a while
