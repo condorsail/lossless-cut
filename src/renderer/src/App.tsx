@@ -2558,13 +2558,24 @@ function App() {
 
                     {filePath != null && compatPlayerEnabled && <MediaSourcePlayer rotate={effectiveRotation} filePath={filePath} videoStream={activeVideoStream} audioStreams={activeAudioStreams} masterVideoRef={videoRef} mediaSourceQuality={mediaSourceQuality} />}
 
-                    {cropMode && cropRect && videoRef.current && (
-                      <CropOverlay
-                        videoElement={videoRef.current}
-                        cropRect={cropRect}
-                        onChange={setCropRect}
-                      />
-                    )}
+                    {cropMode && cropRect && videoRef.current && (() => {
+                      // Get video dimensions from video element or stream metadata
+                      let videoWidth = videoRef.current!.videoWidth;
+                      let videoHeight = videoRef.current!.videoHeight;
+                      if ((!videoWidth || !videoHeight) && activeVideoStream) {
+                        videoWidth = activeVideoStream.width || 0;
+                        videoHeight = activeVideoStream.height || 0;
+                      }
+                      return videoWidth && videoHeight ? (
+                        <CropOverlay
+                          videoElement={videoRef.current!}
+                          cropRect={cropRect}
+                          onChange={setCropRect}
+                          videoWidth={videoWidth}
+                          videoHeight={videoHeight}
+                        />
+                      ) : null;
+                    })()}
                   </div>
 
                   {bigWaveformEnabled && <BigWaveform waveforms={waveforms} relevantTime={relevantTime} playing={playing} fileDurationNonZero={fileDurationNonZero} zoom={zoomUnrounded} seekRel={seekRel} darkMode={darkMode} />}

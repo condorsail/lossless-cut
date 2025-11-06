@@ -5,13 +5,15 @@ interface CropOverlayProps {
   videoElement: HTMLVideoElement;
   cropRect: CropRect;
   onChange: (rect: CropRect) => void;
+  videoWidth: number;
+  videoHeight: number;
 }
 
 type DragHandle = 'move' | 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | null;
 
 const ensureEven = (n: number) => Math.floor(n / 2) * 2;
 
-export function CropOverlay({ videoElement, cropRect, onChange }: CropOverlayProps) {
+export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, videoHeight }: CropOverlayProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragHandle, setDragHandle] = useState<DragHandle>(null);
   const [, setResizeTrigger] = useState(0); // Force re-render on resize
@@ -30,10 +32,11 @@ export function CropOverlay({ videoElement, cropRect, onChange }: CropOverlayPro
 
   // Get video dimensions and scale
   const getVideoScale = useCallback(() => {
-    const videoWidth = videoElement.videoWidth;
-    const videoHeight = videoElement.videoHeight;
-    const displayWidth = videoElement.clientWidth;
-    const displayHeight = videoElement.clientHeight;
+    // Use overlay container dimensions instead of video element's clientWidth/clientHeight
+    // This works correctly even with FFmpeg-assisted playback where the main video element
+    // might not have valid client dimensions
+    const displayWidth = containerRef.current?.clientWidth || 0;
+    const displayHeight = containerRef.current?.clientHeight || 0;
 
     // Account for object-fit: contain
     const videoAspect = videoWidth / videoHeight;
@@ -54,7 +57,7 @@ export function CropOverlay({ videoElement, cropRect, onChange }: CropOverlayPro
     }
 
     return { scaleX, scaleY, offsetX, offsetY, videoWidth, videoHeight, displayWidth, displayHeight };
-  }, [videoElement]);
+  }, [videoWidth, videoHeight]);
 
   // Convert video coordinates to display coordinates
   const videoToDisplay = useCallback((rect: CropRect) => {
