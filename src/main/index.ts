@@ -325,6 +325,39 @@ function initApp() {
 
   ipcMain.handle('showItemInFolder', (_e, path) => shell.showItemInFolder(path));
 
+  ipcMain.handle('checkGifskiAvailable', async () => {
+    try {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      const result = await execFileAsync('gifski', ['--version']);
+      logger.info('Gifski detected:', result.stdout.trim());
+      return true;
+    } catch (err) {
+      logger.info('Gifski not available:', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  });
+
+  ipcMain.handle('runGifski', async (_e, args: string[]) => {
+    try {
+      logger.info('Running gifski with args:', args.slice(0, 10).join(' '), args.length > 10 ? `... (${args.length} total args)` : '');
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      const result = await execFileAsync('gifski', args);
+      logger.info('Gifski completed successfully');
+      if (result.stdout) logger.info('Gifski stdout:', result.stdout);
+      if (result.stderr) logger.info('Gifski stderr:', result.stderr);
+    } catch (err) {
+      logger.error('Gifski execution failed:', err instanceof Error ? err.message : String(err));
+      if (err && typeof err === 'object' && 'stderr' in err) {
+        logger.error('Gifski stderr:', err.stderr);
+      }
+      throw err;
+    }
+  });
+
   ipcMain.on('apiActionResponse', (_e, { id }) => {
     apiActionRequests.get(id)?.();
   });
