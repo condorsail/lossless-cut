@@ -1056,7 +1056,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
 
   const checkGifskiAvailable = useCallback(async () => {
     try {
-      const { execa } = window.require('execa');
+      const remote = window.require('@electron/remote');
+      const execa = remote.require('execa');
       const result = await execa('gifski', ['--version']);
       console.log('Gifski detected:', result.stdout);
       return true;
@@ -1128,7 +1129,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     const { join } = window.require('path');
     const { tmpdir } = window.require('os');
     const { mkdir, rm } = window.require('fs/promises');
-    const { execa } = window.require('execa');
+    const remote = window.require('@electron/remote');
+    const execa = remote.require('execa');
     const tempDir = join(tmpdir(), `gifski-frames-${Date.now()}`);
 
     try {
