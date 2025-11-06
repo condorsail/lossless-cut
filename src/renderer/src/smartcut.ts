@@ -23,9 +23,9 @@ export function getOptimalCRF(encoder: string): number | undefined {
   if (encoder === 'libsvtav1') return 35; // SVT-AV1, range 0-63
 
   // NVENC encoders
-  if (encoder === 'h264_nvenc') return 23; // CQ mode, range 0-51
-  if (encoder === 'hevc_nvenc') return 28; // CQ mode, range 0-51
-  if (encoder === 'av1_nvenc') return 30; // CQ mode for AV1
+  if (encoder === 'h264_nvenc') return 21; // CQ mode, range 0-51, ~equivalent to x264 CRF 23
+  if (encoder === 'hevc_nvenc') return 24; // CQ mode, range 0-51, ~equivalent to x265 CRF 28
+  if (encoder === 'av1_nvenc') return 15; // CQ mode for AV1, NVIDIA recommends 15 for high quality
 
   // VideoToolbox (macOS)
   if (encoder === 'h264_videotoolbox') return undefined; // Uses quality parameter instead
@@ -57,8 +57,9 @@ export function getOptimalPreset(encoder: string): string | undefined {
   if (encoder === 'libx265') return 'medium'; // Same as x264
   if (encoder === 'libsvtav1') return '6'; // Range 0-13, lower = slower/better (8 is default)
 
-  // NVENC encoders
-  if (encoder.includes('nvenc')) return 'p4'; // p1-p7, p4 is balanced (p7 = slowest/best)
+  // NVENC encoders - use slower presets for better quality
+  if (encoder === 'av1_nvenc') return 'p7'; // p1-p7, NVIDIA recommends p6-p7 for AV1
+  if (encoder.includes('nvenc')) return 'p6'; // p6 offers excellent quality/speed balance
 
   // VideoToolbox
   if (encoder.includes('videotoolbox')) return undefined; // No preset equivalent
@@ -95,6 +96,9 @@ export function getEncoderQualityArgs(encoder: string, outputIndex: number, cust
   if (crf !== undefined) {
     if (encoder.includes('nvenc')) {
       args.push(`-cq:${outputIndex}`, String(crf));
+      // Enable NVENC multipass mode (quarter-resolution lookahead for better quality)
+      // This is NOT traditional two-pass - it's single-pass with lookahead analysis
+      args.push(`-multipass:${outputIndex}`, 'qres'); // quarter resolution lookahead
     } else if (encoder.includes('qsv')) {
       args.push(`-global_quality:${outputIndex}`, String(crf));
     } else if (encoder.includes('amf')) {
