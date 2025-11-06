@@ -8,7 +8,7 @@ import i18n from 'i18next';
 import { getSuffixedOutPath, transferTimestamps, getOutFileExtension, getOutDir, deleteDispositionValue, getHtml5ifiedPath, unlinkWithRetry, getFrameDuration, isMac } from '../util';
 import { isCuttingStart, isCuttingEnd, runFfmpegWithProgress, getFfCommandLine, getDuration, createChaptersFromSegments, readFileMeta, getExperimentalArgs, getVideoTimescaleArgs, logStdoutStderr, runFfmpegConcat, RefuseOverwriteError, runFfmpeg } from '../ffmpeg';
 import { getMapStreamsArgs, getStreamIdsToCopy } from '../util/streams';
-import { needsSmartCut, getCodecParams } from '../smartcut';
+import { needsSmartCut, getCodecParams, getEncoderQualityArgs, supportsCRF } from '../smartcut';
 import { getGuaranteedSegments, isDurationValid } from '../segments';
 import { FFprobeStream } from '../../../../ffprobe';
 import { AvoidNegativeTs, FixCodecTagOption, Html5ifyMode, PreserveMetadata, CropRect } from '../../../../types';
@@ -454,9 +454,15 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     function getVideoArgs({ streamIndex, outputIndex }: { streamIndex: number, outputIndex: number }) {
       if (streamIndex !== videoStreamIndex) return undefined;
 
+      // Use CRF mode for better quality (unless encoder doesn't support it)
+      const useCRF = supportsCRF(videoCodec);
+      const qualityArgs = useCRF
+        ? getEncoderQualityArgs(videoCodec, outputIndex)
+        : [`-b:${outputIndex}`, String(videoBitrate)];
+
       const args = [
         `-c:${outputIndex}`, videoCodec,
-        `-b:${outputIndex}`, String(videoBitrate),
+        ...qualityArgs,
       ];
 
       // seems like ffmpeg handles this itself well when encoding same source file
@@ -595,6 +601,14 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
         const videoCodec = sourceCodecParams.videoCodec;
         const videoBitrate = encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate;
 
+        // Use CRF mode for better quality when cropping (unless custom bitrate specified)
+        const useCRF = encCustomBitrate == null && supportsCRF(videoCodec);
+        const encoderArgs = useCRF
+          ? getEncoderQualityArgs(videoCodec, 0) // outputIndex 0 for simple export
+          : [`-b:v`, String(videoBitrate)];
+
+        console.log(`Crop export using ${useCRF ? 'CRF' : 'bitrate'} mode with codec ${videoCodec}`);
+
         const ffmpegArgs = [
           '-hide_banner',
           '-ss', desiredCutFrom.toFixed(5),
@@ -602,7 +616,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           '-t', duration.toFixed(5),
           '-vf', cropFilter,
           '-c:v', videoCodec,
-          '-b:v', String(videoBitrate),
+          ...encoderArgs,
           '-c:a', 'copy',
           '-f', outFormat,
           '-y', finalOutPath,

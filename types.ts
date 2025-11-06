@@ -58,6 +58,15 @@ export interface CropRect {
   height: number,
 }
 
+export interface EncoderSettings {
+  encoder: string;
+  // CRF mode (constant quality) - preferred for quality
+  crf?: number;
+  preset?: string;
+  // Bitrate mode (fallback if CRF not supported)
+  bitrate?: number;
+}
+
 
 export interface Config {
   version: number,
