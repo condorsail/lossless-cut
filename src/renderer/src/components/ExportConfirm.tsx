@@ -100,6 +100,7 @@ function ExportConfirm({
   toggleSettings,
   outputPlaybackRate,
   lossyMode,
+  checkGifskiAvailable,
 } : {
   areWeCutting: boolean,
   segmentsToExport: SegmentToExport[],
@@ -127,12 +128,23 @@ function ExportConfirm({
   toggleSettings: () => void,
   outputPlaybackRate: number,
   lossyMode: LossyMode | undefined,
+  checkGifskiAvailable: () => Promise<boolean>,
 }) {
   const { t } = useTranslation();
 
-  const { changeOutDir, keyframeCut, toggleKeyframeCut, preserveMovData, setPreserveMovData, preserveMetadata, setPreserveMetadata, preserveChapters, setPreserveChapters, movFastStart, setMovFastStart, avoidNegativeTs, setAvoidNegativeTs, autoDeleteMergedSegments, exportConfirmEnabled, toggleExportConfirmEnabled, segmentsToChapters, setSegmentsToChapters, preserveMetadataOnMerge, setPreserveMetadataOnMerge, enableSmartCut, setEnableSmartCut, effectiveExportMode, enableOverwriteOutput, setEnableOverwriteOutput, ffmpegExperimental, setFfmpegExperimental, cutFromAdjustmentFrames, setCutFromAdjustmentFrames, cutToAdjustmentFrames, setCutToAdjustmentFrames, setCutFileTemplate, setCutMergedFileTemplate, simpleMode } = useUserSettings();
+  const { changeOutDir, keyframeCut, toggleKeyframeCut, preserveMovData, setPreserveMovData, preserveMetadata, setPreserveMetadata, preserveChapters, setPreserveChapters, movFastStart, setMovFastStart, avoidNegativeTs, setAvoidNegativeTs, autoDeleteMergedSegments, exportConfirmEnabled, toggleExportConfirmEnabled, segmentsToChapters, setSegmentsToChapters, preserveMetadataOnMerge, setPreserveMetadataOnMerge, enableSmartCut, setEnableSmartCut, effectiveExportMode, enableOverwriteOutput, setEnableOverwriteOutput, ffmpegExperimental, setFfmpegExperimental, cutFromAdjustmentFrames, setCutFromAdjustmentFrames, cutToAdjustmentFrames, setCutToAdjustmentFrames, setCutFileTemplate, setCutMergedFileTemplate, simpleMode, setGifEncoder, setGifFps, setGifWidth, gifEncoder, gifFps, gifWidth } = useUserSettings();
 
   const [showAdvanced, setShowAdvanced] = useState(!simpleMode);
+  const [gifskiAvailable, setGifskiAvailable] = useState(false);
+
+  // Check if gifski is available on component mount
+  useEffect(() => {
+    if (outFormat === 'gif') {
+      checkGifskiAvailable().then(setGifskiAvailable).catch(() => setGifskiAvailable(false));
+    }
+  }, [outFormat, checkGifskiAvailable]);
+
+  const isGif = outFormat === 'gif';
 
   const togglePreserveChapters = useCallback(() => setPreserveChapters((val) => !val), [setPreserveChapters]);
   const togglePreserveMovData = useCallback(() => setPreserveMovData((val) => !val), [setPreserveMovData]);
@@ -406,6 +418,54 @@ function ExportConfirm({
               {renderNoticeIcon(notices.specific['overwriteOutput'], rightIconStyle) ?? <HelpIcon onClick={() => showHelpText({ text: t('Overwrite files when exporting, if a file with the same name as the output file name exists?') })} />}
             </td>
           </tr>
+
+          {isGif && (
+            <>
+              <tr>
+                <td colSpan={3} style={{ paddingTop: '.8em', paddingBottom: '.3em', fontWeight: 'bold', color: 'var(--blue-11)' }}>
+                  {t('GIF Export Settings')}
+                </td>
+              </tr>
+              <tr>
+                <td>{t('GIF Encoder')}</td>
+                <td>
+                  <Select value={gifEncoder} onChange={(e) => setGifEncoder(e.target.value as 'gifski' | 'ffmpeg')} style={{ height: 20, marginLeft: 5 }}>
+                    {gifskiAvailable && <option value="gifski">Gifski (high quality)</option>}
+                    <option value="ffmpeg">FFmpeg (standard)</option>
+                  </Select>
+                </td>
+                <td>
+                  <HelpIcon onClick={() => showHelpText({ text: gifskiAvailable ? t('Gifski produces higher quality GIFs but requires the gifski tool to be installed on your system. FFmpeg is always available but produces lower quality.') : t('Install gifski on your system to enable high-quality GIF export.') })} />
+                </td>
+              </tr>
+              <tr>
+                <td>{t('Frame rate (fps)')}</td>
+                <td>
+                  <TextInput value={gifFps} onChange={(e) => setGifFps(Number(e.target.value))} type="number" min="1" max="50" style={{ width: '4em', flexGrow: 0 }} />
+                </td>
+                <td>
+                  <HelpIcon onClick={() => showHelpText({ text: t('Lower frame rates produce smaller GIF files. Recommended: 10 fps') })} />
+                </td>
+              </tr>
+              <tr>
+                <td>{t('Width (pixels)')}</td>
+                <td>
+                  <TextInput value={gifWidth} onChange={(e) => setGifWidth(Number(e.target.value))} type="number" min="100" max="1920" style={{ width: '5em', flexGrow: 0 }} />
+                </td>
+                <td>
+                  <HelpIcon onClick={() => showHelpText({ text: t('Smaller widths produce smaller GIF files. Height will be scaled proportionally. Recommended: 480 pixels') })} />
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={3}>
+                  <div style={{ ...infoStyle, marginTop: '.3em' }}>
+                    <FaInfoCircle style={{ flexShrink: '0', fontSize: '.8em', verticalAlign: 'baseline', color: 'var(--blue-10)', marginRight: '.5em' }} />
+                    {t('GIF export will re-encode video and may take longer than lossless cutting.')}
+                  </div>
+                </td>
+              </tr>
+            </>
+          )}
         </tbody>
       </table>
 

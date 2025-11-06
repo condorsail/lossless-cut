@@ -166,6 +166,9 @@ const defaults: Config = {
   thumbnailsEnabled: false,
   keyframesEnabled: true,
   reducedMotion: 'user',
+  gifEncoder: 'gifski', // prefer gifski if available, fallback to ffmpeg
+  gifFps: 10,
+  gifWidth: 480,
 };
 
 const configFileName = 'config.json'; // note: this is also hard-coded inside electron-store

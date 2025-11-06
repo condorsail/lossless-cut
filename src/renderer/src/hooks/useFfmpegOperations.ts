@@ -87,7 +87,7 @@ export async function maybeMkDeepOutDir({ outputDir, fileOutPath }: { outputDir:
 }
 
 
-function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog }: {
+function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth }: {
   filePath: string | undefined,
   treatInputFileModifiedTimeAsStart: boolean,
   treatOutputFileModifiedTimeAsStart: boolean | null | undefined,
@@ -98,6 +98,9 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   cutFromAdjustmentFrames: number,
   cutToAdjustmentFrames: number,
   appendLastCommandsLog: (a: string) => void,
+  gifEncoder: 'gifski' | 'ffmpeg',
+  gifFps: number,
+  gifWidth: number,
   encCustomBitrate: number | undefined,
   appendFfmpegCommandLog: (args: string[]) => void,
 }) {
@@ -544,6 +547,22 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       if (await shouldSkipExistingFile(finalOutPath)) return { path: finalOutPath, created: false };
 
       await maybeMkDeepOutDir({ outputDir, fileOutPath: finalOutPath });
+
+      // Special handling for GIF export
+      if (outFormat === 'gif') {
+        console.log('GIF export detected, using specialized GIF encoder');
+        invariant(filePath != null);
+        await exportGif({
+          cutFrom: desiredCutFrom,
+          cutTo,
+          outPath: finalOutPath,
+          preferredEncoder: gifEncoder,
+          fps: gifFps,
+          width: gifWidth,
+          onProgress: (progress) => onSingleProgress(i, progress),
+        });
+        return { path: finalOutPath, created: true };
+      }
 
       if (!isEncoding) {
         // simple lossless cut
@@ -1002,8 +1021,144 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     ];
   }, [extractAttachmentStreams, extractNonAttachmentStreams, filePath]);
 
+  const checkGifskiAvailable = useCallback(async () => {
+    try {
+      const { execa } = window.require('execa');
+      await execa('gifski', ['--version']);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const exportGifWithFFmpeg = useCallback(async ({ cutFrom, cutTo, outPath, fps = 10, width = 480, onProgress }: {
+    cutFrom: number,
+    cutTo: number,
+    outPath: string,
+    fps: number,
+    width: number,
+    onProgress: (p: number) => void,
+  }) => {
+    invariant(filePath != null);
+    const duration = cutTo - cutFrom;
+    const { join } = window.require('path');
+    const { tmpdir } = window.require('os');
+    const palettePath = join(tmpdir(), `palette-${Date.now()}.png`);
+
+    console.log('Exporting GIF with FFmpeg (two-pass palette method)');
+
+    // Pass 1: Generate optimized palette
+    const paletteArgs = [
+      '-hide_banner',
+      '-ss', cutFrom.toFixed(5),
+      '-t', duration.toFixed(5),
+      '-i', filePath,
+      '-vf', `fps=${fps},scale=${width}:-1:flags=lanczos,palettegen=stats_mode=diff`,
+      '-y', palettePath,
+    ];
+
+    appendFfmpegCommandLog(paletteArgs);
+    await runFfmpeg(paletteArgs);
+
+    // Pass 2: Create GIF using palette with optimized dithering
+    const gifArgs = [
+      '-hide_banner',
+      '-ss', cutFrom.toFixed(5),
+      '-t', duration.toFixed(5),
+      '-i', filePath,
+      '-i', palettePath,
+      '-lavfi', `fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+      '-y', outPath,
+    ];
+
+    appendFfmpegCommandLog(gifArgs);
+    await runFfmpegWithProgress({ ffmpegArgs: gifArgs, duration, onProgress });
+
+    // Cleanup palette file
+    await unlinkWithRetry(palettePath).catch((err) => console.warn('Failed to delete palette file:', err));
+
+    console.log('GIF export completed with FFmpeg');
+  }, [appendFfmpegCommandLog, filePath]);
+
+  const exportGifWithGifski = useCallback(async ({ cutFrom, cutTo, outPath, fps = 15, width = 480, onProgress }: {
+    cutFrom: number,
+    cutTo: number,
+    outPath: string,
+    fps: number,
+    width: number,
+    onProgress: (p: number) => void,
+  }) => {
+    invariant(filePath != null);
+    const duration = cutTo - cutFrom;
+    const { join } = window.require('path');
+    const { tmpdir } = window.require('os');
+    const { mkdir, rm } = window.require('fs/promises');
+    const { execa } = window.require('execa');
+    const tempDir = join(tmpdir(), `gifski-frames-${Date.now()}`);
+
+    try {
+      await mkdir(tempDir, { recursive: true });
+      console.log('Exporting GIF with Gifski (high quality)');
+
+      // Step 1: Extract frames as PNG with FFmpeg
+      const framesPattern = join(tempDir, 'frame_%04d.png');
+      const extractArgs = [
+        '-hide_banner',
+        '-ss', cutFrom.toFixed(5),
+        '-t', duration.toFixed(5),
+        '-i', filePath,
+        '-vf', `fps=${fps},scale=${width}:-1:flags=lanczos`,
+        framesPattern,
+      ];
+
+      appendFfmpegCommandLog(extractArgs);
+      await runFfmpegWithProgress({ ffmpegArgs: extractArgs, duration, onProgress: (p) => onProgress(p * 0.7) });
+
+      // Step 2: Run gifski to create GIF
+      const { globby } = await import('globby');
+      const frameFiles = await globby(join(tempDir, 'frame_*.png'));
+
+      if (frameFiles.length === 0) {
+        throw new Error('No frames extracted for GIF creation');
+      }
+
+      onProgress(0.7);
+      await execa('gifski', [
+        '--fps', String(fps),
+        '--quality', '90',
+        '--output', outPath,
+        ...frameFiles,
+      ]);
+      onProgress(1);
+
+      console.log('GIF export completed with Gifski');
+    } finally {
+      // Cleanup temp frames directory
+      await rm(tempDir, { recursive: true, force: true }).catch((err) => console.warn('Failed to delete temp frames:', err));
+    }
+  }, [appendFfmpegCommandLog, filePath]);
+
+  const exportGif = useCallback(async ({ cutFrom, cutTo, outPath, preferredEncoder, fps, width, onProgress }: {
+    cutFrom: number,
+    cutTo: number,
+    outPath: string,
+    preferredEncoder: 'gifski' | 'ffmpeg',
+    fps: number,
+    width: number,
+    onProgress: (p: number) => void,
+  }) => {
+    const gifskiAvailable = await checkGifskiAvailable();
+
+    // Use gifski if available and preferred, otherwise fall back to ffmpeg
+    if (preferredEncoder === 'gifski' && gifskiAvailable) {
+      return exportGifWithGifski({ cutFrom, cutTo, outPath, fps, width, onProgress });
+    }
+
+    return exportGifWithFFmpeg({ cutFrom, cutTo, outPath, fps, width, onProgress });
+  }, [checkGifskiAvailable, exportGifWithFFmpeg, exportGifWithGifski]);
+
   return {
-    cutMultiple, concatFiles, html5ify, html5ifyDummy, fixInvalidDuration, concatCutSegments, extractStreams, tryDeleteFiles,
+    cutMultiple, concatFiles, html5ify, html5ifyDummy, fixInvalidDuration, concatCutSegments, extractStreams, tryDeleteFiles, exportGif, checkGifskiAvailable,
   };
 }
 
