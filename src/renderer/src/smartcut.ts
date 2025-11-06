@@ -15,6 +15,13 @@ const mapVideoCodec = (codec: string) => ({ av1: 'libsvtav1' }[codec] ?? codec);
  * Get optimal CRF value for a given encoder
  * CRF = Constant Rate Factor (quality-based encoding)
  * Lower = better quality, higher file size
+ *
+ * NVENC Hardware Requirements:
+ * - Maxwell (GTX 900): Basic NVENC, limited features
+ * - Pascal (GTX 10): H.264 B-frames, NO HEVC B-frames
+ * - Turing (RTX 20): Full features, HEVC B-frames, b_ref_mode, major quality upgrade
+ * - Ampere (RTX 30): Same NVENC as Turing
+ * - Ada (RTX 40): Same NVENC as Turing + AV1 encoding
  */
 export function getOptimalCRF(encoder: string): number | undefined {
   // Software encoders
@@ -98,15 +105,18 @@ export function getEncoderQualityArgs(encoder: string, outputIndex: number, cust
       args.push(`-cq:${outputIndex}`, String(crf));
 
       // Post-processing quality enhancements (not realtime, can afford the overhead)
+      // These features require Turing (RTX 20 series) or newer for best results
+      // Pascal (GTX 10 series) supports most features except HEVC B-frames
       args.push(`-multipass:${outputIndex}`, 'qres'); // Quarter resolution lookahead
       args.push(`-rc-lookahead:${outputIndex}`, '32'); // Max lookahead for quality (0-32)
-      args.push(`-b_ref_mode:${outputIndex}`, 'middle'); // Use B-frames as reference
       args.push(`-spatial-aq:${outputIndex}`, '1'); // Spatial AQ for better quality
       args.push(`-temporal-aq:${outputIndex}`, '1'); // Temporal AQ for motion quality
 
-      // B-frames: 2-3 for quality (balance between quality and encoding)
-      // More B-frames = better compression, but can reduce quality on high motion
-      args.push(`-bf:${outputIndex}`, '2');
+      // B-frames and B-ref mode (Turing+)
+      // Note: Pascal supports H.264 B-frames but NOT HEVC B-frames
+      // If encoding fails on older hardware, ffmpeg will ignore unsupported flags
+      args.push(`-bf:${outputIndex}`, '2'); // 2 B-frames for quality
+      args.push(`-b_ref_mode:${outputIndex}`, 'middle'); // Use B-frames as reference (Turing+)
     } else if (encoder.includes('qsv')) {
       args.push(`-global_quality:${outputIndex}`, String(crf));
     } else if (encoder.includes('amf')) {
