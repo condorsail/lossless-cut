@@ -17,26 +17,8 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
   const [isDragging, setIsDragging] = useState(false);
   const [dragHandle, setDragHandle] = useState<DragHandle>(null);
   const [, setResizeTrigger] = useState(0); // Force re-render on resize
-  const [isReady, setIsReady] = useState(false); // Track if dimensions are valid
   const dragStartRef = useRef<{ x: number, y: number, rect: CropRect } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Check if container dimensions are valid and set ready state
-  useEffect(() => {
-    const checkReady = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0 && videoWidth > 0 && videoHeight > 0) {
-          setIsReady(true);
-        }
-      }
-    };
-
-    // Check immediately and after a short delay to handle async rendering
-    checkReady();
-    const timer = setTimeout(checkReady, 50);
-    return () => clearTimeout(timer);
-  }, [videoWidth, videoHeight]);
 
   // Handle window resize
   useEffect(() => {
@@ -223,6 +205,7 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
     return undefined;
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Calculate display rect - dimensions are available immediately from props and container
   const displayRect = videoToDisplay(cropRect);
 
   const handleStyle: CSSProperties = {
@@ -245,8 +228,6 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
         right: 0,
         bottom: 0,
         pointerEvents: isDragging ? 'all' : 'auto',
-        opacity: isReady ? 1 : 0,
-        transition: 'opacity 0.15s ease-in',
       }}
     >
       {/* Dark overlay using box-shadow trick */}
