@@ -400,7 +400,6 @@ function App() {
   }, [fileFormat, showNotification]);
 
   const toggleCropMode = useCallback(() => {
-    if (!hasVideo) return; // Crop only works with video
     if (!cropMode && videoRef.current) {
       // Initialize to 80% centered crop when enabling
       const { videoWidth, videoHeight } = videoRef.current;
@@ -416,7 +415,7 @@ function App() {
       }
     }
     setCropMode(!cropMode);
-  }, [cropMode, hasVideo]);
+  }, [cropMode]);
 
   const { ensureWritableOutDir, ensureAccessToSourceDir } = useDirectoryAccess({ setCustomOutDir });
 
