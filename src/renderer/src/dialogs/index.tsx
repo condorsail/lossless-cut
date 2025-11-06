@@ -635,21 +635,11 @@ async function checkIfDirectMedia(url: string): Promise<boolean> {
   }
 }
 
-export async function promptDownloadMediaUrl(outPath: string) {
-  const { value } = await getSwal().Swal.fire<string>({
-    title: i18n.t('Open media from URL'),
-    input: 'text',
-    inputPlaceholder: 'https://example.com/video.m3u8',
-    text: i18n.t('Losslessly download a whole media file from the specified URL, mux it into an mkv file and open it in LosslessCut. This can be useful if you need to download a video from a website, e.g. a HLS streaming video. For example in Chrome you can open Developer Tools and view the network traffic, find the playlist (e.g. m3u8) and copy paste its URL here.'),
-    showCancelButton: true,
-  });
-
-  if (!value) return false;
-
-  let urlToDownload: string | string[] = value;
+export async function downloadAndProcessMediaUrl(url: string, outPath: string): Promise<boolean> {
+  let urlToDownload: string | string[] = url;
 
   // Check if this is direct media by inspecting Content-Type
-  const isDirectMedia = await checkIfDirectMedia(value);
+  const isDirectMedia = await checkIfDirectMedia(url);
 
   if (!isDirectMedia) {
     // Not direct media, try yt-dlp if available
@@ -668,7 +658,7 @@ export async function promptDownloadMediaUrl(outPath: string) {
       });
 
       // Try to extract the direct URL(s) using yt-dlp
-      const extractedUrls = await ipcRenderer.invoke('extractStreamUrl', value);
+      const extractedUrls = await ipcRenderer.invoke('extractStreamUrl', url);
 
       getSwal().Swal.close();
 
@@ -701,4 +691,80 @@ export async function promptDownloadMediaUrl(outPath: string) {
 
   await downloadMediaUrl(urlToDownload, outPath);
   return true;
+}
+
+export async function promptDownloadMediaUrl(outPath: string) {
+  const { value } = await getSwal().Swal.fire<string>({
+    title: i18n.t('Open media from URL'),
+    input: 'text',
+    inputPlaceholder: 'https://example.com/video.m3u8',
+    text: i18n.t('Losslessly download a whole media file from the specified URL, mux it into an mkv file and open it in LosslessCut. This can be useful if you need to download a video from a website, e.g. a HLS streaming video. For example in Chrome you can open Developer Tools and view the network traffic, find the playlist (e.g. m3u8) and copy paste its URL here.'),
+    showCancelButton: true,
+  });
+
+  if (!value) return false;
+
+  return downloadAndProcessMediaUrl(value, outPath);
+}
+
+export async function importFromClipboard({ openFilePath, downloadMediaUrl: downloadMediaUrlWrapper }: {
+  openFilePath: (path: string) => Promise<void>,
+  downloadMediaUrl: (url: string) => Promise<void>,
+}) {
+  const { clipboard } = window.require('electron');
+  const clipboardText = clipboard.readText().trim();
+
+  if (!clipboardText) {
+    await getSwal().Swal.fire({
+      icon: 'info',
+      title: i18n.t('Clipboard is empty'),
+      text: i18n.t('Please copy a file path or URL to the clipboard first.'),
+    });
+    return;
+  }
+
+  // Detect if it's a URL
+  const isUrl = /^https?:\/\//i.test(clipboardText);
+
+  if (isUrl) {
+    // It's a URL - confirm with user and process
+    console.log('Clipboard contains URL:', clipboardText);
+    const { isConfirmed, value } = await getSwal().Swal.fire<string>({
+      icon: 'question',
+      title: i18n.t('Open URL from clipboard?'),
+      input: 'text',
+      inputValue: clipboardText,
+      text: i18n.t('The clipboard contains a URL. Click OK to download and open it, or edit the URL first.'),
+      showCancelButton: true,
+      confirmButtonText: i18n.t('OK'),
+    });
+
+    if (isConfirmed && value) {
+      await downloadMediaUrlWrapper(value.trim());
+    }
+  } else {
+    // Assume it's a file path - confirm with user and open
+    console.log('Clipboard contains file path:', clipboardText);
+    const { isConfirmed, value } = await getSwal().Swal.fire<string>({
+      icon: 'question',
+      title: i18n.t('Open file from clipboard?'),
+      input: 'text',
+      inputValue: clipboardText,
+      text: i18n.t('The clipboard contains a file path. Click OK to open it, or edit the path first.'),
+      showCancelButton: true,
+      confirmButtonText: i18n.t('OK'),
+    });
+
+    if (isConfirmed && value) {
+      try {
+        await openFilePath(value.trim());
+      } catch (err) {
+        await getSwal().Swal.fire({
+          icon: 'error',
+          title: i18n.t('Failed to open file'),
+          text: i18n.t('Could not open the file: {{path}}', { path: value }),
+        });
+      }
+    }
+  }
 }
