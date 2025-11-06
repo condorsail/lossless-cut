@@ -1146,11 +1146,13 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       const { globby } = await import('globby');
       const frameFiles = await globby(join(tempDir, 'frame_*.png'));
 
+      console.log(`Found ${frameFiles.length} frames for gifski`);
       if (frameFiles.length === 0) {
         throw new Error('No frames extracted for GIF creation');
       }
 
       onProgress(0.7);
+      console.log('Invoking gifski with', frameFiles.length, 'frame files');
       await ipcRenderer.invoke('runGifski', [
         '--fps', String(fps),
         '--quality', '90',
