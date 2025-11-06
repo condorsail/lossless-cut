@@ -690,6 +690,10 @@ const KeyboardShortcuts = memo(({
         name: 'Toggle full screen video',
         category: otherCategory,
       },
+      toggleCropMode: {
+        name: t('Toggle crop mode'),
+        category: otherCategory,
+      },
       toggleSettings: {
         name: t('Settings'),
         category: otherCategory,

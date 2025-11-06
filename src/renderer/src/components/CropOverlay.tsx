@@ -13,7 +13,7 @@ type DragHandle = 'move' | 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | n
 
 const ensureEven = (n: number) => Math.floor(n / 2) * 2;
 
-export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, videoHeight }: CropOverlayProps) {
+export function CropOverlay({ videoElement: _videoElement, cropRect, onChange, videoWidth, videoHeight }: CropOverlayProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragHandle, setDragHandle] = useState<DragHandle>(null);
   const [, setResizeTrigger] = useState(0); // Force re-render on resize
@@ -107,7 +107,6 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
     const deltaY = currentY - dragStartRef.current.y;
 
     const { videoWidth, videoHeight } = getVideoScale();
-    const { x: origX, y: origY, width: origWidth, height: origHeight } = dragStartRef.current.rect;
 
     const displayRect = videoToDisplay(dragStartRef.current.rect);
     let newDisplayRect = { ...displayRect };

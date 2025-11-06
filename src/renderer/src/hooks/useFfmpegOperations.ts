@@ -569,7 +569,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           fps: gifFps,
           width: gifWidth,
           onProgress: (progress) => onSingleProgress(i, progress),
-          cropFilter: cropFilterString,
+          ...(cropFilterString != null && { cropFilter: cropFilterString }),
         });
         return { path: finalOutPath, created: true };
       }
@@ -653,7 +653,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
         invariant(filePath != null);
         invariant(outFormat != null);
         const cropFilterString = cropRect ? `crop=${cropRect.width}:${cropRect.height}:${cropRect.x}:${cropRect.y}` : undefined;
-        await cutEncodeSmartPart({ cutFrom, cutTo, outPath, outFormat, videoCodec, videoBitrate: encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate, videoStreamIndex: videoStream.index, videoTimebase: sourceCodecParams.videoTimebase, allFilesMeta, copyFileStreams: copyFileStreamsFiltered, ffmpegExperimental, cropFilter: cropFilterString });
+        await cutEncodeSmartPart({ cutFrom, cutTo, outPath, outFormat, videoCodec, videoBitrate: encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate, videoStreamIndex: videoStream.index, videoTimebase: sourceCodecParams.videoTimebase, allFilesMeta, copyFileStreams: copyFileStreamsFiltered, ffmpegExperimental, ...(cropFilterString != null && { cropFilter: cropFilterString }) });
       }
 
       const cutEncodeWholePart = async () => {
@@ -1088,8 +1088,10 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   }) => {
     invariant(filePath != null);
     const duration = cutTo - cutFrom;
-    const { join } = window.require('path');
-    const { tmpdir } = window.require('os');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { join }: any = window.require('path');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { tmpdir }: any = window.require('os');
     const palettePath = join(tmpdir(), `palette-${Date.now()}.png`);
 
     console.log('Exporting GIF with FFmpeg (two-pass palette method)');
@@ -1142,10 +1144,14 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   }) => {
     invariant(filePath != null);
     const duration = cutTo - cutFrom;
-    const { join } = window.require('path');
-    const { tmpdir } = window.require('os');
-    const { mkdir, rm } = window.require('fs/promises');
-    const { ipcRenderer } = window.require('electron');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { join }: any = window.require('path');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { tmpdir }: any = window.require('os');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { mkdir, rm }: any = window.require('fs/promises');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { ipcRenderer }: any = window.require('electron');
     const tempDir = join(tmpdir(), `gifski-frames-${Date.now()}`);
 
     try {
@@ -1193,7 +1199,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       console.log('GIF export completed with Gifski');
     } finally {
       // Cleanup temp frames directory
-      await rm(tempDir, { recursive: true, force: true }).catch((err) => console.warn('Failed to delete temp frames:', err));
+      await rm(tempDir, { recursive: true, force: true }).catch((err: unknown) => console.warn('Failed to delete temp frames:', err));
     }
   }, [appendFfmpegCommandLog, filePath]);
 
@@ -1211,10 +1217,10 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
 
     // Use gifski if available and preferred, otherwise fall back to ffmpeg
     if (preferredEncoder === 'gifski' && gifskiAvailable) {
-      return exportGifWithGifski({ cutFrom, cutTo, outPath, fps, width, onProgress, cropFilter });
+      return exportGifWithGifski({ cutFrom, cutTo, outPath, fps, width, onProgress, ...(cropFilter != null && { cropFilter }) });
     }
 
-    return exportGifWithFFmpeg({ cutFrom, cutTo, outPath, fps, width, onProgress, cropFilter });
+    return exportGifWithFFmpeg({ cutFrom, cutTo, outPath, fps, width, onProgress, ...(cropFilter != null && { cropFilter }) });
   }, [checkGifskiAvailable, exportGifWithFFmpeg, exportGifWithGifski]);
 
   return {

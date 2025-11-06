@@ -608,6 +608,91 @@ export async function askForPlaybackRate({ detectedFps, outputPlaybackRate }: { 
   return parseValue(value);
 }
 
+async function checkIfDirectMedia(url: string): Promise<boolean> {
+  try {
+    // Make a HEAD request to check Content-Type
+    const response = await fetch(url, { method: 'HEAD' });
+
+    if (!response.ok) return false;
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType) return false;
+
+    // Check if it's a media type that FFmpeg can handle directly
+    const mediaTypes = [
+      'video/',
+      'audio/',
+      'application/vnd.apple.mpegurl', // m3u8
+      'application/x-mpegurl', // m3u8
+      'application/dash+xml', // DASH
+    ];
+
+    return mediaTypes.some(type => contentType.toLowerCase().includes(type));
+  } catch (err) {
+    // If HEAD request fails, we can't determine, so return false
+    console.log('HEAD request failed:', err);
+    return false;
+  }
+}
+
+export async function downloadAndProcessMediaUrl(url: string, outPath: string): Promise<boolean> {
+  let urlToDownload: string | string[] = url;
+
+  // Check if this is direct media by inspecting Content-Type
+  const isDirectMedia = await checkIfDirectMedia(url);
+
+  if (!isDirectMedia) {
+    // Not direct media, try yt-dlp if available
+    const { ipcRenderer } = window.require('electron');
+    const ytDlpAvailable = await ipcRenderer.invoke('checkYtDlpAvailable');
+
+    if (ytDlpAvailable) {
+      // Show a progress indicator while extracting
+      getSwal().Swal.fire({
+        title: i18n.t('Extracting stream URL...'),
+        text: i18n.t('This does not appear to be direct media. Using yt-dlp to extract the stream URL...'),
+        allowOutsideClick: false,
+        didOpen: () => {
+          getSwal().Swal.showLoading();
+        },
+      });
+
+      // Try to extract the direct URL(s) using yt-dlp
+      const extractedUrls = await ipcRenderer.invoke('extractStreamUrl', url);
+
+      getSwal().Swal.close();
+
+      if (extractedUrls && Array.isArray(extractedUrls) && extractedUrls.length > 0) {
+        if (extractedUrls.length === 1) {
+          console.log('Successfully extracted 1 stream URL using yt-dlp');
+        } else {
+          console.log(`Successfully extracted ${extractedUrls.length} stream URLs using yt-dlp (video+audio will be merged)`);
+        }
+        urlToDownload = extractedUrls;
+      } else {
+        // Extraction failed
+        await getSwal().Swal.fire({
+          icon: 'error',
+          title: i18n.t('Could not extract stream URL'),
+          text: i18n.t('This URL does not appear to be direct media, and yt-dlp could not extract a stream URL from it. Please check the URL and try again.'),
+        });
+        return false;
+      }
+    } else {
+      // yt-dlp not available, fail with helpful message
+      await getSwal().Swal.fire({
+        icon: 'error',
+        title: i18n.t('URL not supported'),
+        html: i18n.t('This URL does not appear to be direct media (like .mp4, .m3u8, etc.). To open URLs from streaming sites like YouTube, Twitch, or Vimeo, please install yt-dlp on your system.<br><br>Visit <a href="https://github.com/yt-dlp/yt-dlp#installation" target="_blank">https://github.com/yt-dlp/yt-dlp#installation</a> for installation instructions.'),
+      });
+      return false;
+    }
+  }
+
+  await downloadMediaUrl(urlToDownload, outPath);
+  return true;
+}
+
 export async function promptDownloadMediaUrl(outPath: string) {
   const { value } = await getSwal().Swal.fire<string>({
     title: i18n.t('Open media from URL'),
@@ -619,6 +704,67 @@ export async function promptDownloadMediaUrl(outPath: string) {
 
   if (!value) return false;
 
-  await downloadMediaUrl(value, outPath);
-  return true;
+  return downloadAndProcessMediaUrl(value, outPath);
+}
+
+export async function importFromClipboard({ openFilePath, downloadMediaUrl: downloadMediaUrlWrapper }: {
+  openFilePath: (path: string) => Promise<void>,
+  downloadMediaUrl: (url: string) => Promise<void>,
+}) {
+  const { clipboard } = window.require('electron');
+  const clipboardText = clipboard.readText().trim();
+
+  if (!clipboardText) {
+    await getSwal().Swal.fire({
+      icon: 'info',
+      title: i18n.t('Clipboard is empty'),
+      text: i18n.t('Please copy a file path or URL to the clipboard first.'),
+    });
+    return;
+  }
+
+  // Detect if it's a URL
+  const isUrl = /^https?:\/\//i.test(clipboardText);
+
+  if (isUrl) {
+    // It's a URL - confirm with user and process
+    console.log('Clipboard contains URL:', clipboardText);
+    const { isConfirmed, value } = await getSwal().Swal.fire<string>({
+      icon: 'question',
+      title: i18n.t('Open URL from clipboard?'),
+      input: 'text',
+      inputValue: clipboardText,
+      text: i18n.t('The clipboard contains a URL. Click OK to download and open it, or edit the URL first.'),
+      showCancelButton: true,
+      confirmButtonText: i18n.t('OK'),
+    });
+
+    if (isConfirmed && value) {
+      await downloadMediaUrlWrapper(value.trim());
+    }
+  } else {
+    // Assume it's a file path - confirm with user and open
+    console.log('Clipboard contains file path:', clipboardText);
+    const { isConfirmed, value } = await getSwal().Swal.fire<string>({
+      icon: 'question',
+      title: i18n.t('Open file from clipboard?'),
+      input: 'text',
+      inputValue: clipboardText,
+      text: i18n.t('The clipboard contains a file path. Click OK to open it, or edit the path first.'),
+      showCancelButton: true,
+      confirmButtonText: i18n.t('OK'),
+    });
+
+    if (isConfirmed && value) {
+      try {
+        await openFilePath(value.trim());
+      } catch (err) {
+        await getSwal().Swal.fire({
+          icon: 'error',
+          title: i18n.t('Failed to open file'),
+          text: i18n.t('Could not open the file: {{path}}', { path: value }),
+        });
+      }
+    }
+  }
 }
