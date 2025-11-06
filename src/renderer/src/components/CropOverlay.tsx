@@ -17,8 +17,26 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
   const [isDragging, setIsDragging] = useState(false);
   const [dragHandle, setDragHandle] = useState<DragHandle>(null);
   const [, setResizeTrigger] = useState(0); // Force re-render on resize
+  const [isReady, setIsReady] = useState(false); // Track if dimensions are valid
   const dragStartRef = useRef<{ x: number, y: number, rect: CropRect } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Check if container dimensions are valid and set ready state
+  useEffect(() => {
+    const checkReady = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && videoWidth > 0 && videoHeight > 0) {
+          setIsReady(true);
+        }
+      }
+    };
+
+    // Check immediately and after a short delay to handle async rendering
+    checkReady();
+    const timer = setTimeout(checkReady, 50);
+    return () => clearTimeout(timer);
+  }, [videoWidth, videoHeight]);
 
   // Handle window resize
   useEffect(() => {
@@ -35,8 +53,10 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
     // Use overlay container dimensions instead of video element's clientWidth/clientHeight
     // This works correctly even with FFmpeg-assisted playback where the main video element
     // might not have valid client dimensions
-    const displayWidth = containerRef.current?.clientWidth || 0;
-    const displayHeight = containerRef.current?.clientHeight || 0;
+    // Use getBoundingClientRect() which is more reliable than clientWidth/clientHeight
+    const rect = containerRef.current?.getBoundingClientRect();
+    const displayWidth = rect?.width || 0;
+    const displayHeight = rect?.height || 0;
 
     // Account for object-fit: contain
     const videoAspect = videoWidth / videoHeight;
@@ -225,6 +245,8 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
         right: 0,
         bottom: 0,
         pointerEvents: isDragging ? 'all' : 'auto',
+        opacity: isReady ? 1 : 0,
+        transition: 'opacity 0.15s ease-in',
       }}
     >
       {/* Dark overlay using box-shadow trick */}
