@@ -150,6 +150,7 @@ export interface Config {
   gifFps: number,
   gifWidth: number,
   cropEnabled: boolean,
+  encoderPreference: 'auto' | string, // 'auto' or specific encoder like 'h264_nvenc', 'libx264', etc
 }
 
 export interface Waveform {

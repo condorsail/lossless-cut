@@ -197,6 +197,8 @@ export default function useUserSettingsRoot() {
   useEffect(() => safeSetConfig({ gifFps }), [gifFps]);
   const [gifWidth, setGifWidth] = useState(safeGetConfigInitial('gifWidth'));
   useEffect(() => safeSetConfig({ gifWidth }), [gifWidth]);
+  const [encoderPreference, setEncoderPreference] = useState(safeGetConfigInitial('encoderPreference'));
+  useEffect(() => safeSetConfig({ encoderPreference }), [encoderPreference]);
 
 
   const resetKeyBindings = useCallback(() => {
@@ -301,6 +303,7 @@ export default function useUserSettingsRoot() {
     gifEncoder,
     gifFps,
     gifWidth,
+    encoderPreference,
   };
 
   return {
@@ -382,6 +385,7 @@ export default function useUserSettingsRoot() {
     setGifEncoder,
     setGifFps,
     setGifWidth,
+    setEncoderPreference,
   };
 }
 

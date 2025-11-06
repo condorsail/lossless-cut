@@ -87,7 +87,7 @@ export async function maybeMkDeepOutDir({ outputDir, fileOutPath }: { outputDir:
 }
 
 
-function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect }: {
+function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect, encoderPreference }: {
   filePath: string | undefined,
   treatInputFileModifiedTimeAsStart: boolean,
   treatOutputFileModifiedTimeAsStart: boolean | null | undefined,
@@ -104,6 +104,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   cropRect: CropRect | null,
   encCustomBitrate: number | undefined,
   appendFfmpegCommandLog: (args: string[]) => void,
+  encoderPreference: 'auto' | string,
 }) {
   const shouldSkipExistingFile = useCallback(async (path: string) => {
     const fileExists = await pathExists(path);
@@ -598,7 +599,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           });
 
         const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopy });
-        const videoCodec = sourceCodecParams.videoCodec;
+        // Use encoder preference if set, otherwise match source codec
+        const videoCodec = encoderPreference !== 'auto' ? encoderPreference : sourceCodecParams.videoCodec;
         const videoBitrate = encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate;
 
         // Use CRF mode for better quality when cropping (unless custom bitrate specified)

@@ -174,6 +174,7 @@ const defaults: Config = {
   gifFps: 10,
   gifWidth: 480,
   cropEnabled: false,
+  encoderPreference: 'auto', // 'auto' = match source codec, or specify encoder like 'h264_nvenc'
 };
 
 const configFileName = 'config.json'; // note: this is also hard-coded inside electron-store

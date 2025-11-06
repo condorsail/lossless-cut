@@ -33,6 +33,7 @@ import './i18n.js';
 import { ApiActionRequest } from '../../types.js';
 
 export * as ffmpeg from './ffmpeg.js';
+export { detectHardwareEncoders } from './ffmpeg.js';
 
 export * as i18n from './i18nCommon.js';
 
