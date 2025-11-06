@@ -400,6 +400,7 @@ function App() {
   }, [fileFormat, showNotification]);
 
   const toggleCropMode = useCallback(() => {
+    if (!hasVideo) return; // Crop only works with video
     if (!cropMode && videoRef.current) {
       // Initialize to 80% centered crop when enabling
       const { videoWidth, videoHeight } = videoRef.current;
@@ -415,7 +416,7 @@ function App() {
       }
     }
     setCropMode(!cropMode);
-  }, [cropMode]);
+  }, [cropMode, hasVideo]);
 
   const { ensureWritableOutDir, ensureAccessToSourceDir } = useDirectoryAccess({ setCustomOutDir });
 
@@ -2540,7 +2541,7 @@ function App() {
 
                     {filePath != null && compatPlayerEnabled && <MediaSourcePlayer rotate={effectiveRotation} filePath={filePath} videoStream={activeVideoStream} audioStreams={activeAudioStreams} masterVideoRef={videoRef} mediaSourceQuality={mediaSourceQuality} />}
 
-                    {cropMode && cropRect && videoRef.current && (
+                    {cropMode && cropRect && videoRef.current && !exportConfirmOpen && (
                       <CropOverlay
                         videoElement={videoRef.current}
                         cropRect={cropRect}
