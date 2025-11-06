@@ -38,6 +38,7 @@ import BottomBar from './BottomBar';
 import ExportConfirm from './components/ExportConfirm';
 import ValueTuners from './components/ValueTuners';
 import VolumeControl from './components/VolumeControl';
+import { CropOverlay } from './components/CropOverlay';
 import PlaybackStreamSelector from './components/PlaybackStreamSelector';
 import BatchFilesList from './components/BatchFilesList';
 import ConcatSheet from './components/ConcatSheet';
@@ -89,7 +90,7 @@ import BigWaveform from './components/BigWaveform';
 
 import isDev from './isDev';
 import { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, goToTimecodeDirectArgsSchema, openFilesActionArgsSchema, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, StateSegment, TunerType } from './types';
-import { CaptureFormat, KeyboardAction, ApiActionRequest } from '../../../types';
+import { CaptureFormat, KeyboardAction, ApiActionRequest, CropRect } from '../../../types';
 import { FFprobeChapter, FFprobeFormat, FFprobeStream } from '../../../ffprobe';
 import useLoading from './hooks/useLoading';
 import useVideo from './hooks/useVideo';
@@ -126,6 +127,8 @@ function App() {
   // Per project state
   const [ffmpegCommandLog, setFfmpegCommandLog] = useState<FfmpegCommandLog>([]);
   const [rotation, setRotation] = useState(360);
+  const [cropMode, setCropMode] = useState(false);
+  const [cropRect, setCropRect] = useState<CropRect | null>(null);
   const [progress, setProgress] = useState<number>();
   const [startTimeOffset, setStartTimeOffset] = useState(0);
   const [filePath, setFilePath] = useState<string>();
@@ -396,6 +399,24 @@ function App() {
     if (!supportsRotation) showNotification({ text: i18n.t('Lossless rotation might not work with this file format. You may try changing to MP4') });
   }, [fileFormat, showNotification]);
 
+  const toggleCropMode = useCallback(() => {
+    if (!cropMode && videoRef.current) {
+      // Initialize to 80% centered crop when enabling
+      const { videoWidth, videoHeight } = videoRef.current;
+      if (videoWidth && videoHeight) {
+        const w = Math.floor(videoWidth * 0.8 / 2) * 2; // Ensure even
+        const h = Math.floor(videoHeight * 0.8 / 2) * 2;
+        setCropRect({
+          x: Math.floor((videoWidth - w) / 2 / 2) * 2,
+          y: Math.floor((videoHeight - h) / 2 / 2) * 2,
+          width: w,
+          height: h,
+        });
+      }
+    }
+    setCropMode(!cropMode);
+  }, [cropMode]);
+
   const { ensureWritableOutDir, ensureAccessToSourceDir } = useDirectoryAccess({ setCustomOutDir });
 
   const toggleCaptureFormat = useCallback(() => setCaptureFormat((f) => {
@@ -582,7 +603,7 @@ function App() {
 
   const {
     concatFiles, html5ifyDummy, cutMultiple, concatCutSegments, html5ify, fixInvalidDuration, extractStreams, tryDeleteFiles, exportGif, checkGifskiAvailable,
-  } = useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate: encBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth });
+  } = useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate: encBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect: cropMode ? cropRect : null });
 
   const { previewFilePath, setPreviewFilePath, usingDummyVideo, setUsingDummyVideo, userHtml5ifyCurrentFile, convertFormatBatch, html5ifyAndLoadWithPreferences } = useHtml5ify({
     filePath, hasVideo, hasAudio, workingRef, setWorking, ensureWritableOutDir, customOutDir, batchFiles, enableAutoHtml5ify, setProgress, html5ify, html5ifyDummy, withErrorHandling, showGenericDialog,
@@ -1960,6 +1981,7 @@ function App() {
       focusSegmentAtCursor,
       selectSegmentsAtCursor,
       increaseRotation,
+      toggleCropMode,
       goToTimecode: () => { goToTimecode(); return false; },
       seekBackwards: () => seekRelAccelerated(-1 * keyboardNormalSeekSpeed),
       seekBackwards2: () => seekRelAccelerated(-1 * keyboardSeekSpeed2),
@@ -2517,6 +2539,14 @@ function App() {
                     </video>
 
                     {filePath != null && compatPlayerEnabled && <MediaSourcePlayer rotate={effectiveRotation} filePath={filePath} videoStream={activeVideoStream} audioStreams={activeAudioStreams} masterVideoRef={videoRef} mediaSourceQuality={mediaSourceQuality} />}
+
+                    {cropMode && cropRect && videoRef.current && (
+                      <CropOverlay
+                        videoElement={videoRef.current}
+                        cropRect={cropRect}
+                        onChange={setCropRect}
+                      />
+                    )}
                   </div>
 
                   {bigWaveformEnabled && <BigWaveform waveforms={waveforms} relevantTime={relevantTime} playing={playing} fileDurationNonZero={fileDurationNonZero} zoom={zoomUnrounded} seekRel={seekRel} darkMode={darkMode} />}
@@ -2655,6 +2685,8 @@ function App() {
                   rotation={rotation}
                   areWeCutting={areWeCutting}
                   increaseRotation={increaseRotation}
+                  cropMode={cropMode}
+                  toggleCropMode={toggleCropMode}
                   cleanupFilesDialog={cleanupFilesDialog}
                   captureSnapshot={captureSnapshot}
                   onExportPress={onExportPress}
@@ -2702,7 +2734,7 @@ function App() {
 
               {/* Dialogs */}
 
-              <ExportConfirm areWeCutting={areWeCutting} segmentsOrInverse={segmentsOrInverse} segmentsToExport={segmentsToExport} willMerge={willMerge} visible={exportConfirmOpen} onClosePress={closeExportConfirm} onExportConfirm={onExportConfirm} renderOutFmt={renderOutFmt} outputDir={outputDir} numStreamsTotal={numStreamsTotal} numStreamsToCopy={numStreamsToCopy} onShowStreamsSelectorClick={handleShowStreamsSelectorClick} outFormat={fileFormat} cutFileTemplate={cutFileTemplateOrDefault} cutMergedFileTemplate={cutMergedFileTemplateOrDefault} generateCutFileNames={generateCutFileNames} generateCutMergedFileNames={generateCutMergedFileNames} currentSegIndexSafe={currentSegIndexSafe} mainCopiedThumbnailStreams={mainCopiedThumbnailStreams} needSmartCut={needSmartCut} isEncoding={isEncoding} encBitrate={encBitrate} setEncBitrate={setEncBitrate} toggleSettings={toggleSettings} outputPlaybackRate={outputPlaybackRate} lossyMode={lossyMode} checkGifskiAvailable={checkGifskiAvailable} />
+              <ExportConfirm areWeCutting={areWeCutting} segmentsOrInverse={segmentsOrInverse} segmentsToExport={segmentsToExport} willMerge={willMerge} visible={exportConfirmOpen} onClosePress={closeExportConfirm} onExportConfirm={onExportConfirm} renderOutFmt={renderOutFmt} outputDir={outputDir} numStreamsTotal={numStreamsTotal} numStreamsToCopy={numStreamsToCopy} onShowStreamsSelectorClick={handleShowStreamsSelectorClick} outFormat={fileFormat} cutFileTemplate={cutFileTemplateOrDefault} cutMergedFileTemplate={cutMergedFileTemplateOrDefault} generateCutFileNames={generateCutFileNames} generateCutMergedFileNames={generateCutMergedFileNames} currentSegIndexSafe={currentSegIndexSafe} mainCopiedThumbnailStreams={mainCopiedThumbnailStreams} needSmartCut={needSmartCut} isEncoding={isEncoding} encBitrate={encBitrate} setEncBitrate={setEncBitrate} toggleSettings={toggleSettings} outputPlaybackRate={outputPlaybackRate} lossyMode={lossyMode} checkGifskiAvailable={checkGifskiAvailable} cropRect={cropMode ? cropRect : null} />
 
               <Dialog.Root open={streamsSelectorShown} onOpenChange={setStreamsSelectorShown}>
                 <Dialog.Portal>

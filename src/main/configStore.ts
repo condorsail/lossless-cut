@@ -31,6 +31,7 @@ const defaultKeyBindings: KeyBinding[] = [
   { keys: 'KeyD', action: 'cleanupFilesDialog' },
   { keys: 'KeyB', action: 'splitCurrentSegment' },
   { keys: 'KeyR', action: 'increaseRotation' },
+  { keys: 'KeyX', action: 'toggleCropMode' },
   { keys: 'KeyG', action: 'goToTimecode' },
   { keys: 'KeyT', action: 'toggleStripAll' },
   { keys: 'ShiftLeft+KeyT', action: 'toggleStripCurrentFilter' },
@@ -172,6 +173,7 @@ const defaults: Config = {
   gifEncoder: 'gifski', // prefer gifski if available, fallback to ffmpeg
   gifFps: 10,
   gifWidth: 480,
+  cropEnabled: false,
 };
 
 const configFileName = 'config.json'; // note: this is also hard-coded inside electron-store

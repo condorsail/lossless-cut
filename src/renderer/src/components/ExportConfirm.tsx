@@ -21,7 +21,7 @@ import styles from './ExportConfirm.module.css';
 import { SegmentToExport } from '../types';
 import { defaultCutFileTemplate, defaultCutMergedFileTemplate, GenerateOutFileNames } from '../util/outputNameTemplate';
 import { FFprobeStream } from '../../../../ffprobe';
-import { AvoidNegativeTs, FixCodecTagOption, PreserveMetadata } from '../../../../types';
+import { AvoidNegativeTs, FixCodecTagOption, PreserveMetadata, CropRect } from '../../../../types';
 import TextInput from './TextInput';
 import { UseSegments } from '../hooks/useSegments';
 import ExportSheet from './ExportSheet';
@@ -101,6 +101,7 @@ function ExportConfirm({
   outputPlaybackRate,
   lossyMode,
   checkGifskiAvailable,
+  cropRect,
 } : {
   areWeCutting: boolean,
   segmentsToExport: SegmentToExport[],
@@ -129,6 +130,7 @@ function ExportConfirm({
   outputPlaybackRate: number,
   lossyMode: LossyMode | undefined,
   checkGifskiAvailable: () => Promise<boolean>,
+  cropRect: CropRect | null,
 }) {
   const { t } = useTranslation();
 
@@ -159,7 +161,7 @@ function ExportConfirm({
   const areWeCuttingProblematicStreams = areWeCutting && mainCopiedThumbnailStreams.length > 0;
 
   const notices = useMemo(() => {
-    const specific: Record<'exportMode' | 'problematicStreams' | 'movFastStart' | 'preserveMovData' | 'smartCut' | 'cutMode' | 'avoidNegativeTs' | 'overwriteOutput', { warning?: true, text: ReactNode } | undefined> = {
+    const specific: Record<'exportMode' | 'problematicStreams' | 'movFastStart' | 'preserveMovData' | 'smartCut' | 'cutMode' | 'avoidNegativeTs' | 'overwriteOutput' | 'crop', { warning?: true, text: ReactNode } | undefined> = {
       exportMode: effectiveExportMode === 'segments_to_chapters' ? { text: i18n.t('Segments to chapters mode is active, this means that the file will not be cut. Instead chapters will be created from the segments.') } : undefined,
       problematicStreams: areWeCuttingProblematicStreams ? { warning: true, text: <Trans>Warning: Cutting thumbnail tracks is known to cause problems. Consider disabling track {{ trackNumber: mainCopiedThumbnailStreams[0] ? mainCopiedThumbnailStreams[0].index + 1 : 0 }}.</Trans> } : undefined,
       movFastStart: isMov && isIpod && !movFastStart ? { warning: true, text: t('For the ipod format, it is recommended to activate this option') } : undefined,
@@ -179,6 +181,7 @@ function ExportConfirm({
         return undefined;
       })() : undefined,
       overwriteOutput: enableOverwriteOutput ? { text: t('Existing files will be overwritten without warning!') } : undefined,
+      crop: cropRect ? { text: t('Crop is enabled. Output will be cropped to {{width}}×{{height}} at position ({{x}}, {{y}})', { width: cropRect.width, height: cropRect.height, x: cropRect.x, y: cropRect.y }) } : undefined,
     };
 
     const generic: { warning?: true, text: string }[] = [];
@@ -200,7 +203,7 @@ function ExportConfirm({
       specific,
       totalNum: generic.filter((n) => n.warning).length + Object.values(specific).filter((n) => n != null && n.warning).length,
     };
-  }, [areWeCutting, areWeCuttingProblematicStreams, avoidNegativeTs, effectiveExportMode, enableOverwriteOutput, isEncoding, isIpod, isMov, keyframeCut, mainCopiedThumbnailStreams, movFastStart, needSmartCut, outFormat, outputPlaybackRate, preserveMovData, t, willMerge]);
+  }, [areWeCutting, areWeCuttingProblematicStreams, avoidNegativeTs, effectiveExportMode, enableOverwriteOutput, isEncoding, isIpod, isMov, keyframeCut, mainCopiedThumbnailStreams, movFastStart, needSmartCut, outFormat, outputPlaybackRate, preserveMovData, t, willMerge, cropRect]);
 
   const exportModeDescription = useMemo(() => ({
     segments_to_chapters: t('Don\'t cut the file, but instead export an unmodified original which has chapters generated from segments'),

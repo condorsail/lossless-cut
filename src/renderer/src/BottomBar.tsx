@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { MdRotate90DegreesCcw } from 'react-icons/md';
 import { useTranslation } from 'react-i18next';
 import { IoIosCamera, IoMdKey, IoMdSpeedometer } from 'react-icons/io';
-import { FaYinYang, FaTrashAlt, FaStepBackward, FaStepForward, FaCaretLeft, FaCaretRight, FaPause, FaPlay, FaImages, FaKey } from 'react-icons/fa';
+import { FaYinYang, FaTrashAlt, FaStepBackward, FaStepForward, FaCaretLeft, FaCaretRight, FaPause, FaPlay, FaImages, FaKey, FaCrop } from 'react-icons/fa';
 import { GiSoundWaves } from 'react-icons/gi';
 // import useTraceUpdate from 'use-trace-update';
 import invariant from 'tiny-invariant';
@@ -241,7 +241,7 @@ const CutTimeInput = memo(({ darkMode, cutTime, setCutTime, startTimeOffset, see
 
 function BottomBar({
   zoom, setZoom, timelineToggleComfortZoom,
-  isRotationSet, rotation, areWeCutting, increaseRotation, cleanupFilesDialog,
+  isRotationSet, rotation, areWeCutting, increaseRotation, cropMode, toggleCropMode, cleanupFilesDialog,
   captureSnapshot, onExportPress, segmentsToExport, hasVideo,
   seekAbs, currentSegIndexSafe, cutSegments, currentCutSeg, setCutStart, setCutEnd,
   setCurrentSegIndex,
@@ -261,6 +261,8 @@ function BottomBar({
   rotation: number,
   areWeCutting: boolean,
   increaseRotation: () => void,
+  cropMode: boolean,
+  toggleCropMode: () => void,
   cleanupFilesDialog: () => void,
   captureSnapshot: () => void,
   onExportPress: () => void,
@@ -566,6 +568,15 @@ function BottomBar({
               title={`${t('Set output rotation. Current: ')} ${isRotationSet ? rotationStr : t('Don\'t modify')}`}
             />
             <span style={{ textAlign: 'right', display: 'inline-block', fontSize: '.8em', marginLeft: '.1em' }}>{isRotationSet && rotationStr}</span>
+          </div>
+        )}
+
+        {hasVideo && (
+          <div onClick={toggleCropMode} role="button">
+            <FaCrop
+              style={{ fontSize: '1.2em', verticalAlign: 'middle', color: cropMode ? primaryTextColor : undefined }}
+              title={`${t('Toggle crop mode')} (X)`}
+            />
           </div>
         )}
 

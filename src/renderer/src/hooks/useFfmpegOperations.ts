@@ -11,7 +11,7 @@ import { getMapStreamsArgs, getStreamIdsToCopy } from '../util/streams';
 import { needsSmartCut, getCodecParams } from '../smartcut';
 import { getGuaranteedSegments, isDurationValid } from '../segments';
 import { FFprobeStream } from '../../../../ffprobe';
-import { AvoidNegativeTs, FixCodecTagOption, Html5ifyMode, PreserveMetadata } from '../../../../types';
+import { AvoidNegativeTs, FixCodecTagOption, Html5ifyMode, PreserveMetadata, CropRect } from '../../../../types';
 import { AllFilesMeta, Chapter, CopyfileStreams, CustomTagsByFile, LiteFFprobeStream, ParamsByStreamId, SegmentToExport } from '../types';
 import { LossyMode } from '../../../main';
 import { UserFacingError } from '../../errors';
@@ -87,7 +87,7 @@ export async function maybeMkDeepOutDir({ outputDir, fileOutPath }: { outputDir:
 }
 
 
-function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth }: {
+function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect }: {
   filePath: string | undefined,
   treatInputFileModifiedTimeAsStart: boolean,
   treatOutputFileModifiedTimeAsStart: boolean | null | undefined,
@@ -101,6 +101,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   gifEncoder: 'gifski' | 'ffmpeg',
   gifFps: number,
   gifWidth: number,
+  cropRect: CropRect | null,
   encCustomBitrate: number | undefined,
   appendFfmpegCommandLog: (args: string[]) => void,
 }) {
@@ -565,6 +566,33 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           width: gifWidth,
           onProgress: (progress) => onSingleProgress(i, progress),
         });
+        return { path: finalOutPath, created: true };
+      }
+
+      // Special handling for crop - requires encoding
+      if (cropRect && !isEncoding) {
+        console.log('Crop detected, forcing encode with crop filter');
+        invariant(filePath != null);
+        invariant(outFormat != null);
+
+        const duration = cutTo - desiredCutFrom;
+        const cropFilter = `crop=${cropRect.width}:${cropRect.height}:${cropRect.x}:${cropRect.y}`;
+
+        const ffmpegArgs = [
+          '-hide_banner',
+          '-ss', desiredCutFrom.toFixed(5),
+          '-i', filePath,
+          '-t', duration.toFixed(5),
+          '-vf', cropFilter,
+          '-c:v', 'libx264',
+          '-crf', '23',
+          '-c:a', 'copy',
+          '-f', outFormat,
+          '-y', finalOutPath,
+        ];
+
+        appendFfmpegCommandLog(ffmpegArgs);
+        await runFfmpegWithProgress({ ffmpegArgs, duration, onProgress: (progress) => onSingleProgress(i, progress) });
         return { path: finalOutPath, created: true };
       }
 
