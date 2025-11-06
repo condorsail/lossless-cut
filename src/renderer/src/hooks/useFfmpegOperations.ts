@@ -1057,9 +1057,11 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   const checkGifskiAvailable = useCallback(async () => {
     try {
       const { execa } = window.require('execa');
-      await execa('gifski', ['--version']);
+      const result = await execa('gifski', ['--version']);
+      console.log('Gifski detected:', result.stdout);
       return true;
-    } catch {
+    } catch (err) {
+      console.log('Gifski not detected:', err.message);
       return false;
     }
   }, []);
