@@ -22,9 +22,9 @@ export function getOptimalCRF(encoder: string): number | undefined {
   if (encoder === 'libx265') return 28; // Default for x265, range 0-51, 24-32 typical
   if (encoder === 'libsvtav1') return 35; // SVT-AV1, range 0-63
 
-  // NVENC encoders
-  if (encoder === 'h264_nvenc') return 21; // CQ mode, range 0-51, ~equivalent to x264 CRF 23
-  if (encoder === 'hevc_nvenc') return 24; // CQ mode, range 0-51, ~equivalent to x265 CRF 28
+  // NVENC encoders (for post-processing, not streaming)
+  if (encoder === 'h264_nvenc') return 19; // CQ mode, range 0-51, high quality post-processing
+  if (encoder === 'hevc_nvenc') return 22; // CQ mode, range 0-51, "normal good" per NVIDIA
   if (encoder === 'av1_nvenc') return 15; // CQ mode for AV1, NVIDIA recommends 15 for high quality
 
   // VideoToolbox (macOS)
@@ -57,9 +57,9 @@ export function getOptimalPreset(encoder: string): string | undefined {
   if (encoder === 'libx265') return 'medium'; // Same as x264
   if (encoder === 'libsvtav1') return '6'; // Range 0-13, lower = slower/better (8 is default)
 
-  // NVENC encoders - use slower presets for better quality
-  if (encoder === 'av1_nvenc') return 'p7'; // p1-p7, NVIDIA recommends p6-p7 for AV1
-  if (encoder.includes('nvenc')) return 'p6'; // p6 offers excellent quality/speed balance
+  // NVENC encoders - use slower presets for post-processing quality
+  if (encoder === 'av1_nvenc') return 'p6'; // p1-p7, P6 for high quality without excessive slowdown
+  if (encoder.includes('nvenc')) return 'p6'; // P6: Slower (Better Quality) - NVIDIA recommendation
 
   // VideoToolbox
   if (encoder.includes('videotoolbox')) return undefined; // No preset equivalent
@@ -96,9 +96,17 @@ export function getEncoderQualityArgs(encoder: string, outputIndex: number, cust
   if (crf !== undefined) {
     if (encoder.includes('nvenc')) {
       args.push(`-cq:${outputIndex}`, String(crf));
-      // Enable NVENC multipass mode (quarter-resolution lookahead for better quality)
-      // This is NOT traditional two-pass - it's single-pass with lookahead analysis
-      args.push(`-multipass:${outputIndex}`, 'qres'); // quarter resolution lookahead
+
+      // Post-processing quality enhancements (not realtime, can afford the overhead)
+      args.push(`-multipass:${outputIndex}`, 'qres'); // Quarter resolution lookahead
+      args.push(`-rc-lookahead:${outputIndex}`, '32'); // Max lookahead for quality (0-32)
+      args.push(`-b_ref_mode:${outputIndex}`, 'middle'); // Use B-frames as reference
+      args.push(`-spatial-aq:${outputIndex}`, '1'); // Spatial AQ for better quality
+      args.push(`-temporal-aq:${outputIndex}`, '1'); // Temporal AQ for motion quality
+
+      // B-frames: 2-3 for quality (balance between quality and encoding)
+      // More B-frames = better compression, but can reduce quality on high motion
+      args.push(`-bf:${outputIndex}`, '2');
     } else if (encoder.includes('qsv')) {
       args.push(`-global_quality:${outputIndex}`, String(crf));
     } else if (encoder.includes('amf')) {
