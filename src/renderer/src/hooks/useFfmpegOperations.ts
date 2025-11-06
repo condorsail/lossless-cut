@@ -1143,8 +1143,12 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       await runFfmpegWithProgress({ ffmpegArgs: extractArgs, duration, onProgress: (p) => onProgress(p * 0.7) });
 
       // Step 2: Run gifski to create GIF
-      const { globby } = await import('globby');
-      const frameFiles = await globby(join(tempDir, 'frame_*.png'));
+      const { readdir } = window.require('fs/promises');
+      const allFiles = await readdir(tempDir);
+      const frameFiles = allFiles
+        .filter((f: string) => f.startsWith('frame_') && f.endsWith('.png'))
+        .sort()
+        .map((f: string) => join(tempDir, f));
 
       console.log(`Found ${frameFiles.length} frames for gifski`);
       if (frameFiles.length === 0) {
