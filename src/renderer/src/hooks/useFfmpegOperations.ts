@@ -581,14 +581,26 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
         const duration = cutTo - desiredCutFrom;
         const cropFilter = `crop=${cropRect.width}:${cropRect.height}:${cropRect.x}:${cropRect.y}`;
 
+        // Detect the appropriate codec for the source video
+        const { streams } = allFilesMeta[filePath]!;
+        const streamsToCopy = copyFileStreams.find(({ path }) => path === filePath)!.streamIds
+          .flatMap((streamId) => {
+            const match = streams.find((stream) => stream.index === streamId);
+            return match ? [match] : [];
+          });
+
+        const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopy });
+        const videoCodec = sourceCodecParams.videoCodec;
+        const videoBitrate = encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate;
+
         const ffmpegArgs = [
           '-hide_banner',
           '-ss', desiredCutFrom.toFixed(5),
           '-i', filePath,
           '-t', duration.toFixed(5),
           '-vf', cropFilter,
-          '-c:v', 'libx264',
-          '-crf', '23',
+          '-c:v', videoCodec,
+          '-b:v', String(videoBitrate),
           '-c:a', 'copy',
           '-f', outFormat,
           '-y', finalOutPath,
