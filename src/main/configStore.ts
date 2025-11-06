@@ -258,16 +258,22 @@ export async function init({ customConfigDir }: { customConfigDir: string | unde
   const keyBindings: KeyBinding[] = store.get('keyBindings');
   const hasToggleCropMode = keyBindings.some((binding) => binding.action === 'toggleCropMode');
   if (!hasToggleCropMode) {
-    logger.info('Migrating keyBindings: adding toggleCropMode (KeyX)');
-    const newBinding: KeyBinding = { keys: 'KeyX', action: 'toggleCropMode' };
-    // Insert after increaseRotation to match default order
-    const rotationIndex = keyBindings.findIndex((b) => b.action === 'increaseRotation');
-    if (rotationIndex >= 0) {
-      keyBindings.splice(rotationIndex + 1, 0, newBinding);
+    // Check if KeyX is already bound to something else
+    const keyXConflict = keyBindings.find((binding) => binding.keys === 'KeyX');
+    if (keyXConflict) {
+      logger.info('KeyX already bound to', keyXConflict.action, '- not adding toggleCropMode binding');
     } else {
-      keyBindings.push(newBinding);
+      logger.info('Migrating keyBindings: adding toggleCropMode (KeyX)');
+      const newBinding: KeyBinding = { keys: 'KeyX', action: 'toggleCropMode' };
+      // Insert after increaseRotation to match default order
+      const rotationIndex = keyBindings.findIndex((b) => b.action === 'increaseRotation');
+      if (rotationIndex >= 0) {
+        keyBindings.splice(rotationIndex + 1, 0, newBinding);
+      } else {
+        keyBindings.push(newBinding);
+      }
+      set('keyBindings', keyBindings);
     }
-    set('keyBindings', keyBindings);
   }
 
   const configVersion: number = store.get('version');

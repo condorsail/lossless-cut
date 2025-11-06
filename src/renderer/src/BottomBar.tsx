@@ -575,7 +575,7 @@ function BottomBar({
           <div onClick={toggleCropMode} role="button">
             <FaCrop
               style={{ fontSize: '1.2em', verticalAlign: 'middle', color: cropMode ? primaryTextColor : undefined }}
-              title={`${t('Toggle crop mode')} (X)`}
+              title={t('Toggle crop mode')}
             />
           </div>
         )}
