@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, CSSProperties } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, CSSProperties } from 'react';
 import { CropRect } from '../../../../types';
 
 interface CropOverlayProps {
@@ -205,8 +205,9 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
     return undefined;
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // Calculate display rect - dimensions are available immediately from props and container
-  const displayRect = videoToDisplay(cropRect);
+  // Check if we have valid container dimensions
+  const rect = containerRef.current?.getBoundingClientRect();
+  const hasValidDimensions = rect && rect.width > 0 && rect.height > 0;
 
   const handleStyle: CSSProperties = {
     position: 'absolute',
@@ -217,6 +218,33 @@ export function CropOverlay({ videoElement, cropRect, onChange, videoWidth, vide
     borderRadius: '50%',
     cursor: 'pointer',
   };
+
+  // Force re-render when container ref is set (use layout effect to run before paint)
+  const [, forceUpdate] = useState({});
+  useLayoutEffect(() => {
+    if (containerRef.current && !hasValidDimensions) {
+      forceUpdate({});
+    }
+  }, [hasValidDimensions]);
+
+  if (!hasValidDimensions) {
+    // Return empty container until dimensions are valid
+    return (
+      <div
+        ref={containerRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+      />
+    );
+  }
+
+  // Calculate display rect now that we know dimensions are valid
+  const displayRect = videoToDisplay(cropRect);
 
   return (
     <div
