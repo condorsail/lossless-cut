@@ -1055,19 +1055,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   }, [extractAttachmentStreams, extractNonAttachmentStreams, filePath]);
 
   const checkGifskiAvailable = useCallback(async () => {
-    try {
-      const remote = window.require('@electron/remote');
-      const { execFile } = remote.require('child_process');
-      const { promisify } = remote.require('util');
-      const execFileAsync = promisify(execFile);
-
-      const result = await execFileAsync('gifski', ['--version']);
-      console.log('Gifski detected:', result.stdout.trim());
-      return true;
-    } catch (err) {
-      console.log('Gifski not detected:', err.message);
-      return false;
-    }
+    const { ipcRenderer } = window.require('electron');
+    return ipcRenderer.invoke('checkGifskiAvailable');
   }, []);
 
   const exportGifWithFFmpeg = useCallback(async ({ cutFrom, cutTo, outPath, fps = 10, width = 480, onProgress }: {
@@ -1132,10 +1121,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     const { join } = window.require('path');
     const { tmpdir } = window.require('os');
     const { mkdir, rm } = window.require('fs/promises');
-    const remote = window.require('@electron/remote');
-    const { execFile } = remote.require('child_process');
-    const { promisify } = remote.require('util');
-    const execFileAsync = promisify(execFile);
+    const { ipcRenderer } = window.require('electron');
     const tempDir = join(tmpdir(), `gifski-frames-${Date.now()}`);
 
     try {
@@ -1165,7 +1151,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       }
 
       onProgress(0.7);
-      await execFileAsync('gifski', [
+      await ipcRenderer.invoke('runGifski', [
         '--fps', String(fps),
         '--quality', '90',
         '--output', outPath,

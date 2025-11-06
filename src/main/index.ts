@@ -325,6 +325,27 @@ function initApp() {
 
   ipcMain.handle('showItemInFolder', (_e, path) => shell.showItemInFolder(path));
 
+  ipcMain.handle('checkGifskiAvailable', async () => {
+    try {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      const result = await execFileAsync('gifski', ['--version']);
+      logger.info('Gifski detected:', result.stdout.trim());
+      return true;
+    } catch (err) {
+      logger.info('Gifski not available:', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  });
+
+  ipcMain.handle('runGifski', async (_e, args: string[]) => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFile);
+    await execFileAsync('gifski', args);
+  });
+
   ipcMain.on('apiActionResponse', (_e, { id }) => {
     apiActionRequests.get(id)?.();
   });
