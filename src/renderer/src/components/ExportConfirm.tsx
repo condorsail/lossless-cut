@@ -383,6 +383,14 @@ function ExportConfirm({
             </td>
           </tr>
 
+          {cropRect && (
+            <tr>
+              <td colSpan={3}>
+                {renderNotice(notices.specific['crop'], { style: { fontSize: '85%' } })}
+              </td>
+            </tr>
+          )}
+
           <tr>
             <td>
               {t('Save output to path:')}

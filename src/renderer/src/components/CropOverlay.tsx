@@ -14,8 +14,19 @@ const ensureEven = (n: number) => Math.floor(n / 2) * 2;
 export function CropOverlay({ videoElement, cropRect, onChange }: CropOverlayProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragHandle, setDragHandle] = useState<DragHandle>(null);
+  const [, setResizeTrigger] = useState(0); // Force re-render on resize
   const dragStartRef = useRef<{ x: number, y: number, rect: CropRect } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setResizeTrigger(prev => prev + 1);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Get video dimensions and scale
   const getVideoScale = useCallback(() => {
@@ -212,6 +223,7 @@ export function CropOverlay({ videoElement, cropRect, onChange }: CropOverlayPro
         right: 0,
         bottom: 0,
         pointerEvents: isDragging ? 'all' : 'auto',
+        zIndex: 1, // Lower than dialogs/modals
       }}
     >
       {/* Dark overlay using box-shadow trick */}
