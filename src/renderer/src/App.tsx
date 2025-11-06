@@ -1943,21 +1943,26 @@ function App() {
   }, [currentSegIndexSafe, onEditSegmentTags]);
 
   const promptDownloadMediaUrlWrapper = useCallback(async () => {
-    try {
+    await withErrorHandling(async () => {
+      const newCustomOutDir = await ensureWritableOutDir({ outDir: customOutDir });
+      if (newCustomOutDir == null) {
+        errorToast(i18n.t('Please select a working directory first'));
+        return;
+      }
+
       setWorking({ text: t('Downloading URL') });
-      await withErrorHandling(async () => {
-        const newCustomOutDir = await ensureWritableOutDir({ outDir: customOutDir });
-        if (newCustomOutDir == null) {
-          errorToast(i18n.t('Please select a working directory first'));
-          return;
-        }
-        const outPath = getDownloadMediaOutPath(newCustomOutDir, `downloaded-media-${Date.now()}.mkv`);
-        const downloaded = await promptDownloadMediaUrl(outPath);
-        if (downloaded) await userOpenFiles([outPath]);
-      }, i18n.t('Failed to download URL'));
-    } finally {
-      setWorking();
-    }
+      const outPath = getDownloadMediaOutPath(newCustomOutDir, `downloaded-media-${Date.now()}.mkv`);
+      let downloaded = false;
+      try {
+        downloaded = await promptDownloadMediaUrl(outPath);
+      } finally {
+        setWorking(); // Clear working state before opening file
+      }
+
+      if (downloaded) {
+        await userOpenFiles([outPath]);
+      }
+    }, i18n.t('Failed to download URL'));
   }, [customOutDir, ensureWritableOutDir, setWorking, t, userOpenFiles, withErrorHandling]);
 
   const importFromClipboardWrapper = useCallback(async () => {
@@ -1967,18 +1972,23 @@ function App() {
           await userOpenFiles([path]);
         },
         downloadMediaUrl: async (url: string) => {
+          const newCustomOutDir = await ensureWritableOutDir({ outDir: customOutDir });
+          if (newCustomOutDir == null) {
+            errorToast(i18n.t('Please select a working directory first'));
+            return;
+          }
+
+          setWorking({ text: t('Downloading URL') });
+          const outPath = getDownloadMediaOutPath(newCustomOutDir, `downloaded-media-${Date.now()}.mkv`);
+          let downloaded = false;
           try {
-            setWorking({ text: t('Downloading URL') });
-            const newCustomOutDir = await ensureWritableOutDir({ outDir: customOutDir });
-            if (newCustomOutDir == null) {
-              errorToast(i18n.t('Please select a working directory first'));
-              return;
-            }
-            const outPath = getDownloadMediaOutPath(newCustomOutDir, `downloaded-media-${Date.now()}.mkv`);
-            const downloaded = await downloadAndProcessMediaUrl(url, outPath);
-            if (downloaded) await userOpenFiles([outPath]);
+            downloaded = await downloadAndProcessMediaUrl(url, outPath);
           } finally {
-            setWorking();
+            setWorking(); // Clear working state before opening file
+          }
+
+          if (downloaded) {
+            await userOpenFiles([outPath]);
           }
         },
       });
