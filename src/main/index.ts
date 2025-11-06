@@ -374,21 +374,21 @@ function initApp() {
 
   ipcMain.handle('extractStreamUrl', async (_e, url: string) => {
     try {
-      logger.info('Extracting stream URL with yt-dlp for:', url);
+      logger.info('Extracting stream URL(s) with yt-dlp for:', url);
       const { execFile } = await import('node:child_process');
       const { promisify } = await import('node:util');
       const execFileAsync = promisify(execFile);
 
-      // Use yt-dlp to extract the direct stream URL
+      // Use yt-dlp to extract the direct stream URL(s)
       // -f "bestvideo+bestaudio/best" - get best quality
-      // -g - print direct URLs only
+      // -g - print direct URLs only (may return multiple URLs for video+audio)
       const result = await execFileAsync('yt-dlp', ['-f', 'bestvideo+bestaudio/best', '-g', url]);
       const urls = result.stdout.trim().split('\n').filter(line => line.match(/^https?:\/\//));
 
       if (urls.length > 0) {
-        logger.info('yt-dlp extracted URL(s):', urls.length, 'URL(s)');
-        // Return the first URL (usually video, or combined if single stream)
-        return urls[0];
+        logger.info('yt-dlp extracted', urls.length, 'stream URL(s)');
+        // Return all URLs - ffmpeg can handle multiple inputs
+        return urls;
       }
 
       logger.warn('yt-dlp did not return any URLs');

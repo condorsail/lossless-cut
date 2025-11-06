@@ -646,7 +646,7 @@ export async function promptDownloadMediaUrl(outPath: string) {
 
   if (!value) return false;
 
-  let urlToDownload = value;
+  let urlToDownload: string | string[] = value;
 
   // Check if this is direct media by inspecting Content-Type
   const isDirectMedia = await checkIfDirectMedia(value);
@@ -667,14 +667,18 @@ export async function promptDownloadMediaUrl(outPath: string) {
         },
       });
 
-      // Try to extract the direct URL using yt-dlp
-      const extractedUrl = await ipcRenderer.invoke('extractStreamUrl', value);
+      // Try to extract the direct URL(s) using yt-dlp
+      const extractedUrls = await ipcRenderer.invoke('extractStreamUrl', value);
 
       getSwal().Swal.close();
 
-      if (extractedUrl) {
-        console.log('Successfully extracted direct URL using yt-dlp');
-        urlToDownload = extractedUrl;
+      if (extractedUrls && Array.isArray(extractedUrls) && extractedUrls.length > 0) {
+        if (extractedUrls.length === 1) {
+          console.log('Successfully extracted 1 stream URL using yt-dlp');
+        } else {
+          console.log(`Successfully extracted ${extractedUrls.length} stream URLs using yt-dlp (video+audio will be merged)`);
+        }
+        urlToDownload = extractedUrls;
       } else {
         // Extraction failed
         await getSwal().Swal.fire({

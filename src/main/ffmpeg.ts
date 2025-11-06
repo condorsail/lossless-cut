@@ -660,16 +660,28 @@ export function createMediaSourceProcess({ path, videoStreamIndex, audioStreamIn
   return execa(getFfmpegPath(), args, getExecaOptions({ buffer: false, stderr: enableLog ? 'inherit' : 'pipe' }));
 }
 
-export async function downloadMediaUrl(url: string, outPath: string) {
+export async function downloadMediaUrl(url: string | string[], outPath: string) {
   // User agent taken from https://techblog.willshouse.com/2012/01/03/most-common-user-agents/
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+  const urls = Array.isArray(url) ? url : [url];
+
   const args = [
     '-hide_banner', '-loglevel', 'error',
     '-user_agent', userAgent,
-    '-i', url,
-    '-c', 'copy',
-    outPath,
   ];
+
+  // Add all input URLs
+  for (const inputUrl of urls) {
+    args.push('-i', inputUrl);
+  }
+
+  // Map all streams from all inputs (handles video+audio from separate URLs)
+  for (let i = 0; i < urls.length; i++) {
+    args.push('-map', String(i));
+  }
+
+  args.push('-c', 'copy', outPath);
 
   await runFfmpegProcess(args);
 }
