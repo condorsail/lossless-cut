@@ -223,7 +223,6 @@ export function CropOverlay({ videoElement, cropRect, onChange }: CropOverlayPro
         right: 0,
         bottom: 0,
         pointerEvents: isDragging ? 'all' : 'auto',
-        zIndex: 1, // Lower than dialogs/modals
       }}
     >
       {/* Dark overlay using box-shadow trick */}

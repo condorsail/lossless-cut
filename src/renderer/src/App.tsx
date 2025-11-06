@@ -2540,7 +2540,7 @@ function App() {
 
                     {filePath != null && compatPlayerEnabled && <MediaSourcePlayer rotate={effectiveRotation} filePath={filePath} videoStream={activeVideoStream} audioStreams={activeAudioStreams} masterVideoRef={videoRef} mediaSourceQuality={mediaSourceQuality} />}
 
-                    {cropMode && cropRect && videoRef.current && !exportConfirmOpen && (
+                    {cropMode && cropRect && videoRef.current && (
                       <CropOverlay
                         videoElement={videoRef.current}
                         cropRect={cropRect}
