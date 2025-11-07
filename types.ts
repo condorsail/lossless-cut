@@ -151,6 +151,8 @@ export interface Config {
   gifWidth: number,
   cropEnabled: boolean,
   encoderPreference: 'auto' | string, // 'auto' or specific encoder like 'h264_nvenc', 'libx264', etc
+  customEncoderCRF: number | undefined, // Custom CRF/CQP value, undefined = use optimal defaults
+  disableHardwareAcceleration: boolean, // Disable hardware encoders globally (NVENC, QuickSync, VideoToolbox, etc)
 }
 
 export interface Waveform {

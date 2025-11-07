@@ -199,6 +199,10 @@ export default function useUserSettingsRoot() {
   useEffect(() => safeSetConfig({ gifWidth }), [gifWidth]);
   const [encoderPreference, setEncoderPreference] = useState(safeGetConfigInitial('encoderPreference'));
   useEffect(() => safeSetConfig({ encoderPreference }), [encoderPreference]);
+  const [customEncoderCRF, setCustomEncoderCRF] = useState(safeGetConfigInitial('customEncoderCRF'));
+  useEffect(() => safeSetConfig({ customEncoderCRF }), [customEncoderCRF]);
+  const [disableHardwareAcceleration, setDisableHardwareAcceleration] = useState(safeGetConfigInitial('disableHardwareAcceleration'));
+  useEffect(() => safeSetConfig({ disableHardwareAcceleration }), [disableHardwareAcceleration]);
 
 
   const resetKeyBindings = useCallback(() => {
@@ -304,6 +308,8 @@ export default function useUserSettingsRoot() {
     gifFps,
     gifWidth,
     encoderPreference,
+    customEncoderCRF,
+    disableHardwareAcceleration,
   };
 
   return {
@@ -386,6 +392,8 @@ export default function useUserSettingsRoot() {
     setGifFps,
     setGifWidth,
     setEncoderPreference,
+    setCustomEncoderCRF,
+    setDisableHardwareAcceleration,
   };
 }
 

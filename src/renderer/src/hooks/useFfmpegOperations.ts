@@ -86,8 +86,52 @@ export async function maybeMkDeepOutDir({ outputDir, fileOutPath }: { outputDir:
   if (actualOutputDir !== outputDir) await mkdir(actualOutputDir, { recursive: true });
 }
 
+/**
+ * Determine the best encoder to use based on preference and hardware availability
+ * When encoderPreference is 'auto', prefer hardware encoders if available, fallback to software
+ */
+async function selectEncoder(encoderPreference: 'auto' | string, sourceCodec: string, disableHardwareAcceleration: boolean): Promise<string> {
+  if (encoderPreference !== 'auto') {
+    return encoderPreference;
+  }
 
-function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect, encoderPreference }: {
+  // If hardware acceleration is disabled, always use software encoder
+  if (disableHardwareAcceleration) {
+    console.log(`Auto encoder: hardware acceleration disabled, using source codec ${sourceCodec}`);
+    return sourceCodec;
+  }
+
+  // Auto mode: prefer hardware encoder if available for the source codec type
+  const { detectHardwareEncoders } = window.require('@electron/remote').require('./index.js');
+  const hardwareEncoders = await detectHardwareEncoders();
+
+  // Determine codec type from source codec
+  const codecType = sourceCodec.includes('264') || sourceCodec === 'h264' ? 'h264'
+    : sourceCodec.includes('265') || sourceCodec.includes('hevc') ? 'h265'
+    : sourceCodec.includes('av1') ? 'av1'
+    : null;
+
+  // Try to use hardware encoder for the codec type, otherwise fallback to source codec
+  if (codecType === 'h264' && hardwareEncoders.h264) {
+    console.log(`Auto encoder: using hardware encoder ${hardwareEncoders.h264} for H.264`);
+    return hardwareEncoders.h264;
+  }
+  if (codecType === 'h265' && hardwareEncoders.h265) {
+    console.log(`Auto encoder: using hardware encoder ${hardwareEncoders.h265} for HEVC`);
+    return hardwareEncoders.h265;
+  }
+  if (codecType === 'av1' && hardwareEncoders.av1) {
+    console.log(`Auto encoder: using hardware encoder ${hardwareEncoders.av1} for AV1`);
+    return hardwareEncoders.av1;
+  }
+
+  // No hardware encoder available, use source codec (software encoder)
+  console.log(`Auto encoder: no hardware encoder available, using source codec ${sourceCodec}`);
+  return sourceCodec;
+}
+
+
+function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect, encoderPreference, customEncoderCRF, disableHardwareAcceleration }: {
   filePath: string | undefined,
   treatInputFileModifiedTimeAsStart: boolean,
   treatOutputFileModifiedTimeAsStart: boolean | null | undefined,
@@ -105,6 +149,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   encCustomBitrate: number | undefined,
   appendFfmpegCommandLog: (args: string[]) => void,
   encoderPreference: 'auto' | string,
+  customEncoderCRF: number | undefined,
+  disableHardwareAcceleration: boolean,
 }) {
   const shouldSkipExistingFile = useCallback(async (path: string) => {
     const fileExists = await pathExists(path);
@@ -458,7 +504,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       // Use CRF mode for better quality (unless encoder doesn't support it)
       const useCRF = supportsCRF(videoCodec);
       const qualityArgs = useCRF
-        ? getEncoderQualityArgs(videoCodec, outputIndex)
+        ? getEncoderQualityArgs(videoCodec, outputIndex, customEncoderCRF)
         : [`-b:${outputIndex}`, String(videoBitrate)];
 
       const args = [
@@ -599,14 +645,14 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           });
 
         const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopy });
-        // Use encoder preference if set, otherwise match source codec
-        const videoCodec = encoderPreference !== 'auto' ? encoderPreference : sourceCodecParams.videoCodec;
+        // Use encoder preference (auto = prefer hardware, fallback to software)
+        const videoCodec = await selectEncoder(encoderPreference, sourceCodecParams.videoCodec, disableHardwareAcceleration);
         const videoBitrate = encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate;
 
         // Use CRF mode for better quality when cropping (unless custom bitrate specified)
         const useCRF = encCustomBitrate == null && supportsCRF(videoCodec);
         const encoderArgs = useCRF
-          ? getEncoderQualityArgs(videoCodec, 0) // outputIndex 0 for simple export
+          ? getEncoderQualityArgs(videoCodec, 0, customEncoderCRF) // outputIndex 0 for simple export
           : [`-b:v`, String(videoBitrate)];
 
         console.log(`Crop export using ${useCRF ? 'CRF' : 'bitrate'} mode with codec ${videoCodec}`);
