@@ -173,7 +173,7 @@ function App() {
   const [selectedBatchFiles, setSelectedBatchFiles] = useState<string[]>([]);
 
   const allUserSettings = useUserSettingsRoot();
-  const { captureFormat, customOutDir, keyframeCut, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, autoMerge, timecodeFormat, invertCutSegments, autoExportExtraStreams, askBeforeClose, enableAskForImportChapters, enableAskForFileOpenAction, playbackVolume, autoSaveProjectFile, wheelSensitivity, waveformHeight, invertTimelineScroll, language, ffmpegExperimental, hideNotifications, hideOsNotifications, autoLoadTimecode, autoDeleteMergedSegments, exportConfirmEnabled, segmentsToChapters, simpleMode, cutFileTemplate, cutMergedFileTemplate, mergedFileTemplate, keyboardSeekAccFactor, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, outFormatLocked, safeOutputFileName, enableAutoHtml5ify, segmentsToChaptersOnly, keyBindings, enableSmartCut, customFfPath, storeProjectInWorkingDir, enableOverwriteOutput, mouseWheelZoomModifierKey, mouseWheelFrameSeekModifierKey, mouseWheelKeyframeSeekModifierKey, captureFrameMethod, captureFrameQuality, captureFrameFileNameFormat, enableNativeHevc, cleanupChoices, darkMode, preferStrongColors, outputFileNameMinZeroPadding, cutFromAdjustmentFrames, cutToAdjustmentFrames, waveformMode: waveformModePreference, thumbnailsEnabled, keyframesEnabled, reducedMotion, gifEncoder, gifFps, gifWidth } = allUserSettings.settings;
+  const { captureFormat, customOutDir, keyframeCut, preserveMetadata, preserveMetadataOnMerge, preserveMovData, fixCodecTag, preserveChapters, movFastStart, avoidNegativeTs, autoMerge, timecodeFormat, invertCutSegments, autoExportExtraStreams, askBeforeClose, enableAskForImportChapters, enableAskForFileOpenAction, playbackVolume, autoSaveProjectFile, wheelSensitivity, waveformHeight, invertTimelineScroll, language, ffmpegExperimental, hideNotifications, hideOsNotifications, autoLoadTimecode, autoDeleteMergedSegments, exportConfirmEnabled, segmentsToChapters, simpleMode, cutFileTemplate, cutMergedFileTemplate, mergedFileTemplate, keyboardSeekAccFactor, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, outFormatLocked, safeOutputFileName, enableAutoHtml5ify, segmentsToChaptersOnly, keyBindings, enableSmartCut, customFfPath, storeProjectInWorkingDir, enableOverwriteOutput, mouseWheelZoomModifierKey, mouseWheelFrameSeekModifierKey, mouseWheelKeyframeSeekModifierKey, captureFrameMethod, captureFrameQuality, captureFrameFileNameFormat, enableNativeHevc, cleanupChoices, darkMode, preferStrongColors, outputFileNameMinZeroPadding, cutFromAdjustmentFrames, cutToAdjustmentFrames, waveformMode: waveformModePreference, thumbnailsEnabled, keyframesEnabled, reducedMotion, gifEncoder, gifFps, gifWidth } = allUserSettings.settings;
   const { setCaptureFormat, setCustomOutDir, setKeyframeCut, setPlaybackVolume, setExportConfirmEnabled, setSimpleMode, setOutFormatLocked, setSafeOutputFileName, setKeyBindings, resetKeyBindings, setStoreProjectInWorkingDir, setCleanupChoices, toggleDarkMode, setWaveformMode, setThumbnailsEnabled, setKeyframesEnabled, prefersReducedMotion } = allUserSettings;
 
   const { withErrorHandling, handleError, genericError, setGenericError } = useErrorHandling();
@@ -184,7 +184,7 @@ function App() {
   const keyBindingByAction = useMemo(() => Object.fromEntries(keyBindings.map((binding) => [binding.action, binding])), [keyBindings]);
 
   const { working, setWorking, workingRef, abortWorking } = useLoading();
-  const { videoRef, videoContainerRef, playbackRate, setPlaybackRate, outputPlaybackRate, setOutputPlaybackRate, commandedTime, seekAbs, playingRef, getRelevantTime, setPlaying, onSeeked, relevantTime, onStartPlaying, setCommandedTime, setOutputPlaybackRateState, commandedTimeRef, onStopPlaying, onVideoAbort, playerTime, setPlayerTime, playbackModeRef, playing, play, pause, seekRel } = useVideo({ filePath });
+  const { videoRef, videoContainerRef, playbackRate, setPlaybackRate, outputPlaybackRate, setOutputPlaybackRate, commandedTime, seekAbs, playingRef, getRelevantTime, setPlaying, onSeeked, relevantTime, onStartPlaying, setCommandedTime, setOutputPlaybackRateState, commandedTimeRef, onStopPlaying, onVideoAbort, playerTime, setPlayerTime, playbackMode, setPlaybackMode, playbackModeRef, playing, play, pause, seekRel } = useVideo({ filePath });
   const { timecodePlaceholder, formatTimecode, formatTimeAndFrames, parseTimecode, getFrameCount, promptTimecode } = useTimecode({ detectedFps, timecodeFormat, showGenericDialog });
   const { loadSubtitle, subtitlesByStreamId, setSubtitlesByStreamId } = useSubtitles();
 
@@ -638,7 +638,7 @@ function App() {
     setUsingDummyVideo(false);
     setPlaying(false);
     playingRef.current = false;
-    playbackModeRef.current = undefined;
+    setPlaybackMode(undefined);
     setFileDuration(undefined);
     cutSegmentsHistory.go(0);
     setDetectedFileFormat(undefined);
@@ -665,7 +665,7 @@ function App() {
     setExportConfirmOpen(false);
     setOutputPlaybackRateState(1);
     setCurrentFileExportCount(0);
-  }, [videoRef, setCommandedTime, setPlaybackRate, setPreviewFilePath, setUsingDummyVideo, setPlaying, playingRef, playbackModeRef, cutSegmentsHistory, setDetectedFileFormat, setCopyStreamIdsByFile, setThumbnails, setSubtitlesByStreamId, setHideCompatPlayer, setOutputPlaybackRateState]);
+  }, [videoRef, setCommandedTime, setPlaybackRate, setPreviewFilePath, setUsingDummyVideo, setPlaying, playingRef, setPlaybackMode, cutSegmentsHistory, setDetectedFileFormat, setCopyStreamIdsByFile, setThumbnails, setSubtitlesByStreamId, setOutputPlaybackRateState]);
 
 
   const showUnsupportedFileMessage = useCallback(() => {
@@ -707,7 +707,7 @@ function App() {
   }, [cutSegments, seekAbs, setCurrentSegIndex]);
 
   const togglePlay = useCallback(({ resetPlaybackRate, requestPlaybackMode }: { resetPlaybackRate?: boolean, requestPlaybackMode?: PlaybackMode } | undefined = {}) => {
-    playbackModeRef.current = requestPlaybackMode;
+    setPlaybackMode(requestPlaybackMode);
 
     if (playingRef.current) {
       pause();
@@ -735,24 +735,22 @@ function App() {
       }
     }
     play(resetPlaybackRate);
-  }, [playbackModeRef, playingRef, play, pause, selectedSegments, commandedTimeRef, cutSegments, setCurrentSegIndex, seekAbs, currentCutSeg]);
+  }, [setPlaybackMode, playingRef, playbackModeRef, play, pause, selectedSegments, commandedTimeRef, currentCutSeg, cutSegments, setCurrentSegIndex, seekAbs]);
 
   const onTimeUpdate = useCallback<ReactEventHandler<HTMLVideoElement>>((e) => {
     const { currentTime } = e.currentTarget;
     if (playerTime === currentTime) return;
     setPlayerTime(currentTime);
 
-    const playbackMode = playbackModeRef.current;
-
     const segmentsAtCursorIndexes = findSegmentsAtCursor(commandedTimeRef.current);
     const firstSegmentAtCursorIndex = segmentsAtCursorIndexes[0];
     const playingSegment = firstSegmentAtCursorIndex != null ? cutSegments[firstSegmentAtCursorIndex] : undefined;
 
-    if (playbackMode != null && playingSegment && playingSegment.end != null) { // todo and is currently playing?
-      const nextAction = getPlaybackAction({ playbackMode, currentTime, playingSegment: { start: playingSegment.start, end: playingSegment.end } });
+    if (playbackModeRef.current != null && playingRef.current && playingSegment && playingSegment.end != null) { // todo and is currently playing?
+      const nextAction = getPlaybackAction({ playbackMode: playbackModeRef.current, currentTime, playingSegment: { start: playingSegment.start, end: playingSegment.end } });
 
       const exit = () => {
-        playbackModeRef.current = undefined;
+        setPlaybackMode(undefined);
         pause();
       };
 
@@ -765,8 +763,8 @@ function App() {
           let newIndex = getNewJumpIndex(index >= 0 ? index : 0, 1);
           if (newIndex > selectedSegmentsWithoutMarkers.length - 1) {
             // have reached end of last segment
-            if (playbackMode === 'loop-selected-segments') newIndex = 0; // start over
-            else if (playbackMode === 'play-selected-segments') exit();
+            if (playbackModeRef.current === 'loop-selected-segments') newIndex = 0; // start over
+            else if (playbackModeRef.current === 'play-selected-segments') exit();
           }
           const nextSelectedSegment = selectedSegmentsWithoutMarkers[newIndex];
           if (nextSelectedSegment != null) {
@@ -782,7 +780,7 @@ function App() {
         }
       }
     }
-  }, [commandedTimeRef, cutSegments, findSegmentsAtCursor, pause, playbackModeRef, playerTime, seekAbs, selectedSegments, setCurrentSegIndex, setPlayerTime]);
+  }, [commandedTimeRef, cutSegments, findSegmentsAtCursor, pause, playbackModeRef, playerTime, playingRef, seekAbs, selectedSegments, setCurrentSegIndex, setPlaybackMode, setPlayerTime]);
 
   const closeFileWithConfirm = useCallback(() => {
     if (!isFileOpened || workingRef.current) return;
@@ -925,7 +923,7 @@ function App() {
 
       await maybeMkDeepOutDir({ outputDir: outDir, fileOutPath: outPath });
 
-      const { haveExcludedStreams } = await concatFiles({ paths, outPath, outDir, outFormat, metadataFromPath, includeAllStreams, streams, ffmpegExperimental, onProgress: setProgress, preserveMovData, movFastStart, preserveMetadataOnMerge, chapters: chaptersFromSegments });
+      const { haveExcludedStreams } = await concatFiles({ paths, outPath, outDir, outFormat, metadataFromPath, includeAllStreams, streams, ffmpegExperimental, onProgress: setProgress, preserveMovData, movFastStart, fixCodecTag, preserveMetadataOnMerge, chapters: chaptersFromSegments });
 
       const outputSize = await readFileSize(outPath); // * 1.06; // testing:)
       const sizeCheckResult = checkFileSizes(inputSize, outputSize);
@@ -969,7 +967,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [workingRef, ensureWritableOutDir, customOutDir, setWorking, segmentsToChapters, concatFiles, ffmpegExperimental, preserveMovData, movFastStart, preserveMetadataOnMerge, closeBatch, enableOverwriteOutput, hideAllNotifications, t, showOsNotification, openConcatFinishedDialog, handleConcatFailed]);
+  }, [workingRef, ensureWritableOutDir, customOutDir, setWorking, segmentsToChapters, concatFiles, ffmpegExperimental, preserveMovData, movFastStart, fixCodecTag, preserveMetadataOnMerge, closeBatch, enableOverwriteOutput, hideAllNotifications, t, showOsNotification, openConcatFinishedDialog, handleConcatFailed]);
 
   const cleanupFiles = useCallback(async (cleanupChoices2: CleanupChoicesType) => {
     // Store paths before we reset state
@@ -997,6 +995,7 @@ function App() {
     }, (err) => i18n.t('Unable to delete file: {{message}}', { message: err instanceof Error ? err.message : String(err) }));
   }, [batchListRemoveFile, clearSegments, filePath, previewFilePath, projectFileSavePath, resetState, setWorking, withErrorHandling]);
 
+  // todo convert to Dialog component
   const askForCleanupChoices = useCallback(async () => {
     const trashResponse = await showCleanupFilesDialog(cleanupChoices);
     if (!trashResponse) return undefined; // Canceled
@@ -1094,6 +1093,7 @@ function App() {
         preserveMovData,
         preserveChapters,
         movFastStart,
+        fixCodecTag,
         avoidNegativeTs,
         customTagsByFile,
         paramsByStreamId,
@@ -1129,6 +1129,7 @@ function App() {
           ffmpegExperimental,
           preserveMovData,
           movFastStart,
+          fixCodecTag,
           onProgress: setProgress,
           chapterNames,
           preserveMetadataOnMerge,
@@ -1206,7 +1207,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormatData, mainStreams, exportExtraStreams, areWeCutting, hideAllNotifications, simpleMode, prefersReducedMotion, cleanupChoices.cleanupAfterExport, cleanupFilesWithDialog, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, showOsNotification, openCutFinishedDialog, handleExportFailed]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, fixCodecTag, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormatData, mainStreams, exportExtraStreams, areWeCutting, hideAllNotifications, simpleMode, prefersReducedMotion, cleanupChoices.cleanupAfterExport, cleanupFilesWithDialog, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, showOsNotification, openCutFinishedDialog, handleExportFailed]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -1928,20 +1929,12 @@ function App() {
       await openYouTubeChaptersDialog(formatYouTube(cutSegments));
     }
 
-    function seekReset() {
-      seekAccelerationRef.current = 1;
-    }
-
-    function seekRel2({ keyup, amount }: { keyup: boolean | undefined, amount: number }) {
-      if (keyup) {
-        seekReset();
-        return;
-      }
+    function seekRelAccelerated(amount: number) {
       seekRel(seekAccelerationRef.current * amount);
       seekAccelerationRef.current *= keyboardSeekAccFactor;
     }
 
-    const ret: Record<MainKeyboardAction, ((a: { keyup?: boolean | undefined }) => boolean) | ((a: { keyup?: boolean | undefined }) => void)> = {
+    const ret: Record<MainKeyboardAction, (() => boolean) | (() => void)> = {
       // NOTE: Do not change these keys because users have bound keys by these names in their config files
       // For actions, see also KeyboardShortcuts.jsx
       togglePlayNoResetSpeed: () => togglePlay(),
@@ -1968,12 +1961,12 @@ function App() {
       selectSegmentsAtCursor,
       increaseRotation,
       goToTimecode: () => { goToTimecode(); return false; },
-      seekBackwards: ({ keyup }) => seekRel2({ keyup, amount: -1 * keyboardNormalSeekSpeed }),
-      seekBackwards2: ({ keyup }) => seekRel2({ keyup, amount: -1 * keyboardSeekSpeed2 }),
-      seekBackwards3: ({ keyup }) => seekRel2({ keyup, amount: -1 * keyboardSeekSpeed3 }),
-      seekForwards: ({ keyup }) => seekRel2({ keyup, amount: keyboardNormalSeekSpeed }),
-      seekForwards2: ({ keyup }) => seekRel2({ keyup, amount: keyboardSeekSpeed2 }),
-      seekForwards3: ({ keyup }) => seekRel2({ keyup, amount: keyboardSeekSpeed3 }),
+      seekBackwards: () => seekRelAccelerated(-1 * keyboardNormalSeekSpeed),
+      seekBackwards2: () => seekRelAccelerated(-1 * keyboardSeekSpeed2),
+      seekBackwards3: () => seekRelAccelerated(-1 * keyboardSeekSpeed3),
+      seekForwards: () => seekRelAccelerated(keyboardNormalSeekSpeed),
+      seekForwards2: () => seekRelAccelerated(keyboardSeekSpeed2),
+      seekForwards3: () => seekRelAccelerated(keyboardSeekSpeed3),
       seekBackwardsPercent: () => { seekRelPercent(-0.01); return false; },
       seekForwardsPercent: () => { seekRelPercent(0.01); return false; },
       seekBackwardsKeyframe: () => seekClosestKeyframe(-1),
@@ -2063,15 +2056,9 @@ function App() {
       openDirDialog,
       toggleSettings,
       openSendReportDialog: () => { openSendReportDialogWithState(); },
-      detectBlackScenes: ({ keyup }) => {
-        if (keyup) detectBlackScenes();
-      },
-      detectSilentScenes: ({ keyup }) => {
-        if (keyup) detectSilentScenes();
-      },
-      detectSceneChanges: ({ keyup }) => {
-        if (keyup) detectSceneChanges();
-      },
+      detectBlackScenes: () => { detectBlackScenes(); return false; },
+      detectSilentScenes: () => { detectSilentScenes(); return false; },
+      detectSceneChanges: () => { detectSceneChanges(); return false; },
       readAllKeyframes,
       createSegmentsFromKeyframes,
       toggleWaveformMode,
@@ -2087,11 +2074,30 @@ function App() {
 
   const getKeyboardAction = useCallback((action: MainKeyboardAction) => mainActions[action], [mainActions]);
 
-  const onKeyPress = useCallback(({ action, keyup }: { action: KeyboardAction, keyup?: boolean | undefined }) => {
+  const onKeyUp = useCallback(({ action }: { action: KeyboardAction }) => {
+    function seekReset() {
+      seekAccelerationRef.current = 1;
+    }
+
+    const keyUpActions = {
+      seekBackwards: () => seekReset(),
+      seekBackwards2: () => seekReset(),
+      seekBackwards3: () => seekReset(),
+      seekForwards: () => seekReset(),
+      seekForwards2: () => seekReset(),
+      seekForwards3: () => seekReset(),
+    };
+    const fn = keyUpActions[action as keyof typeof keyUpActions];
+    if (fn == null) return true;
+    fn();
+    return true;
+  }, [seekAccelerationRef]);
+
+  const onKeyDown = useCallback(({ action }: { action: KeyboardAction }) => {
     function tryMainActions(mainAction: MainKeyboardAction) {
       const fn = getKeyboardAction(mainAction);
       if (!fn) return { match: false };
-      const bubble = fn({ keyup });
+      const bubble = fn();
       if (bubble === undefined) return { match: true };
       return { match: true, bubble };
     }
@@ -2111,7 +2117,7 @@ function App() {
     }
 
     if (concatSheetOpen || keyboardShortcutsVisible || genericDialog != null) {
-      return true; // don't allow any further hotkeys
+      return true; // don't allow any further hotkeys, but bubble
     }
 
     if (exportConfirmOpen) {
@@ -2130,7 +2136,7 @@ function App() {
     return true; // bubble the event
   }, [closeExportConfirm, concatSheetOpen, exportConfirmOpen, genericDialog, getKeyboardAction, keyboardShortcutsVisible, onExportConfirm, toggleKeyboardShortcuts]);
 
-  useKeyboard({ keyBindings, onKeyPress });
+  useKeyboard({ keyBindings, onKeyDown, onKeyUp });
 
   useEffect(() => {
     // eslint-disable-next-line unicorn/prefer-add-event-listener
@@ -2291,7 +2297,7 @@ function App() {
         key,
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         async () => {
-          fn({ keyup: true });
+          fn();
         },
       ] as const),
       // also called from menu:
@@ -2688,6 +2694,7 @@ function App() {
                   parseTimecode={parseTimecode}
                   playbackRate={playbackRate}
                   currentFrame={currentFrame}
+                  playbackMode={playbackMode}
                 />
               </div>
 
