@@ -703,7 +703,10 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopyFromMainFile });
       const { videoStream, videoTimebase } = sourceCodecParams;
 
-      const videoCodec = lossyMode ? lossyMode.videoEncoder : sourceCodecParams.videoCodec;
+      // Determine video codec: lossyMode takes precedence, otherwise use encoder preference (auto = prefer hardware)
+      const videoCodec = lossyMode
+        ? lossyMode.videoEncoder
+        : await selectEncoder(encoderPreference, sourceCodecParams.videoCodec, disableHardwareAcceleration);
 
       const copyFileStreamsFiltered = [{
         path: filePath,
