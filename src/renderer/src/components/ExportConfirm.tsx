@@ -647,7 +647,7 @@ function ExportConfirm({
                 </>
               )}
 
-              {areWeCutting && (
+              {areWeCutting && !cropRect && (
                 <>
                   <AnimatedTr>
                     <td>
