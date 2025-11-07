@@ -21,10 +21,13 @@ const runningFfmpegs = new Set<{
 // setInterval(() => console.log(runningFfmpegs.size), 1000);
 
 let customFfPath: string | undefined;
+let cachedHardwareEncoders: { h264?: string; h265?: string; av1?: string } | undefined;
 
 // Note that this does not work on MAS because of sandbox restrictions
 export function setCustomFfPath(path: string | undefined) {
   customFfPath = path;
+  // Clear hardware encoder cache when FFmpeg path changes, so it re-detects with new FFmpeg
+  cachedHardwareEncoders = undefined;
 }
 
 function escapeCliArg(arg: string) {
@@ -694,8 +697,6 @@ export interface HardwareEncoderInfo {
   h265?: string; // e.g., 'hevc_nvenc', 'hevc_videotoolbox', 'hevc_qsv', etc.
   av1?: string;  // e.g., 'av1_nvenc' (RTX 4000+), 'av1_qsv', etc.
 }
-
-let cachedHardwareEncoders: HardwareEncoderInfo | undefined;
 
 /**
  * Detects available hardware encoders by querying ffmpeg
