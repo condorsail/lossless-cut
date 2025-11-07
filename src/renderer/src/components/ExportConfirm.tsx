@@ -684,7 +684,7 @@ function ExportConfirm({
                 <>
                   <AnimatedTr>
                     <td>
-                      {t('Smart cut auto detect bitrate')}
+                      {t('Auto detect bitrate (when using CRF mode this is ignored)')}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
