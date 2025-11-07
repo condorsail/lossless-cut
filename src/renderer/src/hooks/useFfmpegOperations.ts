@@ -106,10 +106,13 @@ async function selectEncoder(encoderPreference: 'auto' | string, sourceCodec: st
   const hardwareEncoders = await detectHardwareEncoders();
 
   // Determine codec type from source codec
+  // Note: sourceCodec could be a codec name like "h264", "hevc", or encoder name like "libx264", "libsvtav1"
   const codecType = sourceCodec.includes('264') || sourceCodec === 'h264' ? 'h264'
     : sourceCodec.includes('265') || sourceCodec.includes('hevc') ? 'h265'
-    : sourceCodec.includes('av1') ? 'av1'
+    : sourceCodec.includes('av1') || sourceCodec === 'av01' ? 'av1' // av01 is the codec_name from ffprobe
     : null;
+
+  console.log(`Auto encoder: source codec="${sourceCodec}", detected type="${codecType}", hardware encoders:`, hardwareEncoders);
 
   // Try to use hardware encoder for the codec type, otherwise fallback to source codec
   if (codecType === 'h264' && hardwareEncoders.h264) {
