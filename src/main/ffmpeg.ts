@@ -718,8 +718,9 @@ export async function detectHardwareEncoders(): Promise<HardwareEncoderInfo> {
 
     // Find first available H.264 hardware encoder
     for (const encoder of h264Candidates) {
-      // Match pattern like: " V..... h264_nvenc" (V indicates video encoder)
-      if (new RegExp(`\\s+V\\.{5}\\s+${encoder}\\s`).test(encoderList)) {
+      // Match pattern like: " V....D h264_nvenc" where V=video, and next 5 chars are capability flags
+      // Flags can be dots or letters (e.g., D=decoder, E=encoder, etc.)
+      if (new RegExp(`\\s+V.{5}\\s+${encoder}\\s`).test(encoderList)) {
         result.h264 = encoder;
         break;
       }
@@ -727,7 +728,7 @@ export async function detectHardwareEncoders(): Promise<HardwareEncoderInfo> {
 
     // Find first available H.265/HEVC hardware encoder
     for (const encoder of h265Candidates) {
-      if (new RegExp(`\\s+V\\.{5}\\s+${encoder}\\s`).test(encoderList)) {
+      if (new RegExp(`\\s+V.{5}\\s+${encoder}\\s`).test(encoderList)) {
         result.h265 = encoder;
         break;
       }
@@ -735,7 +736,7 @@ export async function detectHardwareEncoders(): Promise<HardwareEncoderInfo> {
 
     // Find first available AV1 hardware encoder (RTX 4000 series, Intel Arc, etc.)
     for (const encoder of av1Candidates) {
-      if (new RegExp(`\\s+V\\.{5}\\s+${encoder}\\s`).test(encoderList)) {
+      if (new RegExp(`\\s+V.{5}\\s+${encoder}\\s`).test(encoderList)) {
         result.av1 = encoder;
         break;
       }
