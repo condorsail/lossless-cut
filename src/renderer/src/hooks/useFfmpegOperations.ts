@@ -11,7 +11,7 @@ import { getMapStreamsArgs, getStreamIdsToCopy } from '../util/streams';
 import { needsSmartCut, getCodecParams } from '../smartcut';
 import { getGuaranteedSegments, isDurationValid } from '../segments';
 import { FFprobeStream } from '../../../../ffprobe';
-import { AvoidNegativeTs, FixCodecTagOption, Html5ifyMode, PreserveMetadata } from '../../../../types';
+import { AvoidNegativeTs, FixCodecTagOption, Html5ifyMode, PreserveMetadata, CropRect } from '../../../../types';
 import { AllFilesMeta, Chapter, CopyfileStreams, CustomTagsByFile, LiteFFprobeStream, ParamsByStreamId, SegmentToExport } from '../types';
 import { LossyMode } from '../../../main';
 import { UserFacingError } from '../../errors';
@@ -87,7 +87,7 @@ export async function maybeMkDeepOutDir({ outputDir, fileOutPath }: { outputDir:
 }
 
 
-function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth }: {
+function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect }: {
   filePath: string | undefined,
   treatInputFileModifiedTimeAsStart: boolean,
   treatOutputFileModifiedTimeAsStart: boolean | null | undefined,
@@ -101,6 +101,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   gifEncoder: 'gifski' | 'ffmpeg',
   gifFps: number,
   gifWidth: number,
+  cropRect: CropRect | null,
   encCustomBitrate: number | undefined,
   appendFfmpegCommandLog: (args: string[]) => void,
 }) {
@@ -434,7 +435,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   }, [appendFfmpegCommandLog, cutFromAdjustmentFrames, cutToAdjustmentFrames, filePath, getOutputPlaybackRateArgs, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart]);
 
   // inspired by https://gist.github.com/fernandoherreradelasheras/5eca67f4200f1a7cc8281747da08496e
-  const cutEncodeSmartPart = useCallback(async ({ cutFrom, cutTo, outPath, outFormat, videoCodec, videoBitrate, videoTimebase, allFilesMeta, copyFileStreams, videoStreamIndex, ffmpegExperimental }: {
+  const cutEncodeSmartPart = useCallback(async ({ cutFrom, cutTo, outPath, outFormat, videoCodec, videoBitrate, videoTimebase, allFilesMeta, copyFileStreams, videoStreamIndex, ffmpegExperimental, cropFilter }: {
     cutFrom: number,
     cutTo: number,
     outPath: string,
@@ -446,6 +447,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     copyFileStreams: CopyfileStreams,
     videoStreamIndex: number,
     ffmpegExperimental: boolean,
+    cropFilter?: string,
   }) => {
     invariant(filePath != null);
 
@@ -482,6 +484,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       '-t', (cutTo - cutFrom).toFixed(5),
 
       ...mapStreamsArgs,
+
+      ...(cropFilter ? ['-vf', cropFilter] : []),
 
       // See https://github.com/mifi/lossless-cut/issues/170
       '-ignore_unknown',
@@ -556,6 +560,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       if (outFormat === 'gif') {
         console.log('GIF export detected, using specialized GIF encoder');
         invariant(filePath != null);
+        const cropFilterString = cropRect ? `crop=${cropRect.width}:${cropRect.height}:${cropRect.x}:${cropRect.y}` : undefined;
         await exportGif({
           cutFrom: desiredCutFrom,
           cutTo,
@@ -564,7 +569,47 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           fps: gifFps,
           width: gifWidth,
           onProgress: (progress) => onSingleProgress(i, progress),
+          ...(cropFilterString != null && { cropFilter: cropFilterString }),
         });
+        return { path: finalOutPath, created: true };
+      }
+
+      // Special handling for crop - requires encoding
+      if (cropRect && !isEncoding) {
+        console.log('Crop detected, forcing encode with crop filter');
+        invariant(filePath != null);
+        invariant(outFormat != null);
+
+        const duration = cutTo - desiredCutFrom;
+        const cropFilter = `crop=${cropRect.width}:${cropRect.height}:${cropRect.x}:${cropRect.y}`;
+
+        // Detect the appropriate codec for the source video
+        const { streams } = allFilesMeta[filePath]!;
+        const streamsToCopy = copyFileStreams.find(({ path }) => path === filePath)!.streamIds
+          .flatMap((streamId) => {
+            const match = streams.find((stream) => stream.index === streamId);
+            return match ? [match] : [];
+          });
+
+        const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopy });
+        const videoCodec = sourceCodecParams.videoCodec;
+        const videoBitrate = encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate;
+
+        const ffmpegArgs = [
+          '-hide_banner',
+          '-ss', desiredCutFrom.toFixed(5),
+          '-i', filePath,
+          '-t', duration.toFixed(5),
+          '-vf', cropFilter,
+          '-c:v', videoCodec,
+          '-b:v', String(videoBitrate),
+          '-c:a', 'copy',
+          '-f', outFormat,
+          '-y', finalOutPath,
+        ];
+
+        appendFfmpegCommandLog(ffmpegArgs);
+        await runFfmpegWithProgress({ ffmpegArgs, duration, onProgress: (progress) => onSingleProgress(i, progress) });
         return { path: finalOutPath, created: true };
       }
 
@@ -607,7 +652,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
         invariant(sourceCodecParams.videoTimebase != null);
         invariant(filePath != null);
         invariant(outFormat != null);
-        await cutEncodeSmartPart({ cutFrom, cutTo, outPath, outFormat, videoCodec, videoBitrate: encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate, videoStreamIndex: videoStream.index, videoTimebase: sourceCodecParams.videoTimebase, allFilesMeta, copyFileStreams: copyFileStreamsFiltered, ffmpegExperimental });
+        const cropFilterString = cropRect ? `crop=${cropRect.width}:${cropRect.height}:${cropRect.x}:${cropRect.y}` : undefined;
+        await cutEncodeSmartPart({ cutFrom, cutTo, outPath, outFormat, videoCodec, videoBitrate: encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate, videoStreamIndex: videoStream.index, videoTimebase: sourceCodecParams.videoTimebase, allFilesMeta, copyFileStreams: copyFileStreamsFiltered, ffmpegExperimental, ...(cropFilterString != null && { cropFilter: cropFilterString }) });
       }
 
       const cutEncodeWholePart = async () => {
@@ -679,7 +725,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     } finally {
       if (chaptersPath) await tryDeleteFiles([chaptersPath]);
     }
-  }, [shouldSkipExistingFile, isEncoding, filePath, lossyMode, losslessCutSingle, cutEncodeSmartPart, encCustomBitrate, concatFiles]);
+  }, [shouldSkipExistingFile, isEncoding, filePath, lossyMode, losslessCutSingle, cutEncodeSmartPart, encCustomBitrate, concatFiles, cropRect]);
 
   const concatCutSegments = useCallback(async ({ customOutDir, outFormat, segmentPaths, ffmpegExperimental, onProgress, preserveMovData, fixCodecTag, movFastStart, chapterNames, preserveMetadataOnMerge, mergedOutFilePath }: {
     customOutDir: string | undefined,
@@ -1031,21 +1077,28 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     return ipcRenderer.invoke('checkGifskiAvailable');
   }, []);
 
-  const exportGifWithFFmpeg = useCallback(async ({ cutFrom, cutTo, outPath, fps = 10, width = 480, onProgress }: {
+  const exportGifWithFFmpeg = useCallback(async ({ cutFrom, cutTo, outPath, fps = 10, width = 480, onProgress, cropFilter }: {
     cutFrom: number,
     cutTo: number,
     outPath: string,
     fps: number,
     width: number,
     onProgress: (p: number) => void,
+    cropFilter?: string,
   }) => {
     invariant(filePath != null);
     const duration = cutTo - cutFrom;
-    const { join } = window.require('path');
-    const { tmpdir } = window.require('os');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { join }: any = window.require('path');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { tmpdir }: any = window.require('os');
     const palettePath = join(tmpdir(), `palette-${Date.now()}.png`);
 
     console.log('Exporting GIF with FFmpeg (two-pass palette method)');
+
+    // Build filter chain with optional crop
+    const baseFilters = cropFilter ? `${cropFilter},fps=${fps},scale=${width}:-1:flags=lanczos` : `fps=${fps},scale=${width}:-1:flags=lanczos`;
+    const paletteUseFilters = cropFilter ? `${cropFilter},fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle` : `fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`;
 
     // Pass 1: Generate optimized palette
     const paletteArgs = [
@@ -1053,7 +1106,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       '-ss', cutFrom.toFixed(5),
       '-t', duration.toFixed(5),
       '-i', filePath,
-      '-vf', `fps=${fps},scale=${width}:-1:flags=lanczos,palettegen=stats_mode=diff`,
+      '-vf', `${baseFilters},palettegen=stats_mode=diff`,
       '-y', palettePath,
     ];
 
@@ -1067,7 +1120,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       '-t', duration.toFixed(5),
       '-i', filePath,
       '-i', palettePath,
-      '-lavfi', `fps=${fps},scale=${width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+      '-lavfi', paletteUseFilters,
       '-y', outPath,
     ];
 
@@ -1080,20 +1133,25 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     console.log('GIF export completed with FFmpeg');
   }, [appendFfmpegCommandLog, filePath]);
 
-  const exportGifWithGifski = useCallback(async ({ cutFrom, cutTo, outPath, fps = 15, width = 480, onProgress }: {
+  const exportGifWithGifski = useCallback(async ({ cutFrom, cutTo, outPath, fps = 15, width = 480, onProgress, cropFilter }: {
     cutFrom: number,
     cutTo: number,
     outPath: string,
     fps: number,
     width: number,
     onProgress: (p: number) => void,
+    cropFilter?: string,
   }) => {
     invariant(filePath != null);
     const duration = cutTo - cutFrom;
-    const { join } = window.require('path');
-    const { tmpdir } = window.require('os');
-    const { mkdir, rm } = window.require('fs/promises');
-    const { ipcRenderer } = window.require('electron');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { join }: any = window.require('path');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { tmpdir }: any = window.require('os');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { mkdir, rm }: any = window.require('fs/promises');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { ipcRenderer }: any = window.require('electron');
     const tempDir = join(tmpdir(), `gifski-frames-${Date.now()}`);
 
     try {
@@ -1102,12 +1160,13 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
 
       // Step 1: Extract frames as PNG with FFmpeg
       const framesPattern = join(tempDir, 'frame_%04d.png');
+      const extractFilters = cropFilter ? `${cropFilter},fps=${fps},scale=${width}:-1:flags=lanczos` : `fps=${fps},scale=${width}:-1:flags=lanczos`;
       const extractArgs = [
         '-hide_banner',
         '-ss', cutFrom.toFixed(5),
         '-t', duration.toFixed(5),
         '-i', filePath,
-        '-vf', `fps=${fps},scale=${width}:-1:flags=lanczos`,
+        '-vf', extractFilters,
         framesPattern,
       ];
 
@@ -1140,11 +1199,11 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       console.log('GIF export completed with Gifski');
     } finally {
       // Cleanup temp frames directory
-      await rm(tempDir, { recursive: true, force: true }).catch((err) => console.warn('Failed to delete temp frames:', err));
+      await rm(tempDir, { recursive: true, force: true }).catch((err: unknown) => console.warn('Failed to delete temp frames:', err));
     }
   }, [appendFfmpegCommandLog, filePath]);
 
-  const exportGif = useCallback(async ({ cutFrom, cutTo, outPath, preferredEncoder, fps, width, onProgress }: {
+  const exportGif = useCallback(async ({ cutFrom, cutTo, outPath, preferredEncoder, fps, width, onProgress, cropFilter }: {
     cutFrom: number,
     cutTo: number,
     outPath: string,
@@ -1152,15 +1211,16 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     fps: number,
     width: number,
     onProgress: (p: number) => void,
+    cropFilter?: string,
   }) => {
     const gifskiAvailable = await checkGifskiAvailable();
 
     // Use gifski if available and preferred, otherwise fall back to ffmpeg
     if (preferredEncoder === 'gifski' && gifskiAvailable) {
-      return exportGifWithGifski({ cutFrom, cutTo, outPath, fps, width, onProgress });
+      return exportGifWithGifski({ cutFrom, cutTo, outPath, fps, width, onProgress, ...(cropFilter != null && { cropFilter }) });
     }
 
-    return exportGifWithFFmpeg({ cutFrom, cutTo, outPath, fps, width, onProgress });
+    return exportGifWithFFmpeg({ cutFrom, cutTo, outPath, fps, width, onProgress, ...(cropFilter != null && { cropFilter }) });
   }, [checkGifskiAvailable, exportGifWithFFmpeg, exportGifWithGifski]);
 
   return {

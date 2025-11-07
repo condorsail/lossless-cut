@@ -31,6 +31,7 @@ const defaultKeyBindings: KeyBinding[] = [
   { keys: 'KeyD', action: 'cleanupFilesDialog' },
   { keys: 'KeyB', action: 'splitCurrentSegment' },
   { keys: 'KeyR', action: 'increaseRotation' },
+  { keys: 'KeyX', action: 'toggleCropMode' },
   { keys: 'KeyG', action: 'goToTimecode' },
   { keys: 'KeyT', action: 'toggleStripAll' },
   { keys: 'ShiftLeft+KeyT', action: 'toggleStripCurrentFilter' },
@@ -172,6 +173,7 @@ const defaults: Config = {
   gifEncoder: 'gifski', // prefer gifski if available, fallback to ffmpeg
   gifFps: 10,
   gifWidth: 480,
+  cropEnabled: false,
 };
 
 const configFileName = 'config.json'; // note: this is also hard-coded inside electron-store
@@ -250,6 +252,28 @@ export async function init({ customConfigDir }: { customConfigDir: string | unde
   if (cleanupChoices != null && cleanupChoices.closeFile == null) {
     logger.info('Migrating cleanupChoices.closeFile');
     set('cleanupChoices', { ...cleanupChoices, closeFile: true });
+  }
+
+  // Migrate keyBindings to include new crop mode binding
+  const keyBindings: KeyBinding[] = store.get('keyBindings');
+  const hasToggleCropMode = keyBindings.some((binding) => binding.action === 'toggleCropMode');
+  if (!hasToggleCropMode) {
+    // Check if KeyX is already bound to something else
+    const keyXConflict = keyBindings.find((binding) => binding.keys === 'KeyX');
+    if (keyXConflict) {
+      logger.info('KeyX already bound to', keyXConflict.action, '- not adding toggleCropMode binding');
+    } else {
+      logger.info('Migrating keyBindings: adding toggleCropMode (KeyX)');
+      const newBinding: KeyBinding = { keys: 'KeyX', action: 'toggleCropMode' };
+      // Insert after increaseRotation to match default order
+      const rotationIndex = keyBindings.findIndex((b) => b.action === 'increaseRotation');
+      if (rotationIndex >= 0) {
+        keyBindings.splice(rotationIndex + 1, 0, newBinding);
+      } else {
+        keyBindings.push(newBinding);
+      }
+      set('keyBindings', keyBindings);
+    }
   }
 
   const configVersion: number = store.get('version');
