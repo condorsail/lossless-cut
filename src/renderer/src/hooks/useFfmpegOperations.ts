@@ -1027,13 +1027,8 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   }, [extractAttachmentStreams, extractNonAttachmentStreams, filePath]);
 
   const checkGifskiAvailable = useCallback(async () => {
-    try {
-      const { execa } = window.require('execa');
-      await execa('gifski', ['--version']);
-      return true;
-    } catch {
-      return false;
-    }
+    const { ipcRenderer } = window.require('electron');
+    return ipcRenderer.invoke('checkGifskiAvailable');
   }, []);
 
   const exportGifWithFFmpeg = useCallback(async ({ cutFrom, cutTo, outPath, fps = 10, width = 480, onProgress }: {
@@ -1098,7 +1093,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     const { join } = window.require('path');
     const { tmpdir } = window.require('os');
     const { mkdir, rm } = window.require('fs/promises');
-    const { execa } = window.require('execa');
+    const { ipcRenderer } = window.require('electron');
     const tempDir = join(tmpdir(), `gifski-frames-${Date.now()}`);
 
     try {
@@ -1120,15 +1115,21 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       await runFfmpegWithProgress({ ffmpegArgs: extractArgs, duration, onProgress: (p) => onProgress(p * 0.7) });
 
       // Step 2: Run gifski to create GIF
-      const { globby } = await import('globby');
-      const frameFiles = await globby(join(tempDir, 'frame_*.png'));
+      const { readdir } = window.require('fs/promises');
+      const allFiles = await readdir(tempDir);
+      const frameFiles = allFiles
+        .filter((f: string) => f.startsWith('frame_') && f.endsWith('.png'))
+        .sort()
+        .map((f: string) => join(tempDir, f));
 
+      console.log(`Found ${frameFiles.length} frames for gifski`);
       if (frameFiles.length === 0) {
         throw new Error('No frames extracted for GIF creation');
       }
 
       onProgress(0.7);
-      await execa('gifski', [
+      console.log('Invoking gifski with', frameFiles.length, 'frame files');
+      await ipcRenderer.invoke('runGifski', [
         '--fps', String(fps),
         '--quality', '90',
         '--output', outPath,
