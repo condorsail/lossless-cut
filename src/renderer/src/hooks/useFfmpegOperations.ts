@@ -682,6 +682,12 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
         return cutEncodeWholePart();
       }
 
+      // Crop requires re-encoding every frame, so force encode whole segment (no Smart Cut)
+      if (cropRect) {
+        console.log('Crop mode: cutting/encoding the whole segment with crop filter', { desiredCutFrom, cutTo });
+        return cutEncodeWholePart();
+      }
+
       const { losslessCutFrom, segmentNeedsSmartCut } = await needsSmartCut({ path: filePath, desiredCutFrom, videoStream });
       if (segmentNeedsSmartCut && !detectedFps) throw new UserFacingError(i18n.t('Smart cut is not possible when FPS is unknown'));
       console.log('Smart cut on video stream', videoStream.index);
