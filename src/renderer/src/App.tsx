@@ -617,7 +617,8 @@ function App() {
 
   const areWeCutting = useMemo(() => segmentsToExport.some(({ start, end }) => isCuttingStart(start) || isCuttingEnd(end, fileDuration)), [fileDuration, segmentsToExport]);
   const needSmartCut = areWeCutting && enableSmartCut;
-  const isEncoding = needSmartCut || lossyMode != null;
+  // Crop requires re-encoding, so include it in isEncoding
+  const isEncoding = needSmartCut || lossyMode != null || (cropMode && cropRect != null);
 
   const {
     concatFiles, html5ifyDummy, cutMultiple, concatCutSegments, html5ify, fixInvalidDuration, extractStreams, tryDeleteFiles, checkGifskiAvailable,
