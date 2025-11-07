@@ -648,8 +648,10 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           });
 
         const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopy });
+        console.log('BEFORE selectEncoder - encoderPreference:', encoderPreference, 'sourceCodec:', sourceCodecParams.videoCodec, 'disableHW:', disableHardwareAcceleration);
         // Use encoder preference (auto = prefer hardware, fallback to software)
         const videoCodec = await selectEncoder(encoderPreference, sourceCodecParams.videoCodec, disableHardwareAcceleration);
+        console.log('AFTER selectEncoder - selected codec:', videoCodec);
         const videoBitrate = encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate;
 
         // Use CRF mode for better quality when cropping (unless custom bitrate specified)
