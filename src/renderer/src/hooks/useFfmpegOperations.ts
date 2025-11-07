@@ -8,7 +8,7 @@ import i18n from 'i18next';
 import { getSuffixedOutPath, transferTimestamps, getOutFileExtension, getOutDir, deleteDispositionValue, getHtml5ifiedPath, unlinkWithRetry, getFrameDuration, isMac } from '../util';
 import { isCuttingStart, isCuttingEnd, runFfmpegWithProgress, getFfCommandLine, getDuration, createChaptersFromSegments, readFileMeta, getExperimentalArgs, getVideoTimescaleArgs, logStdoutStderr, runFfmpegConcat, RefuseOverwriteError, runFfmpeg } from '../ffmpeg';
 import { getMapStreamsArgs, getStreamIdsToCopy } from '../util/streams';
-import { needsSmartCut, getCodecParams } from '../smartcut';
+import { needsSmartCut, getCodecParams, getEncoderQualityArgs, supportsCRF } from '../smartcut';
 import { getGuaranteedSegments, isDurationValid } from '../segments';
 import { FFprobeStream } from '../../../../ffprobe';
 import { AvoidNegativeTs, FixCodecTagOption, Html5ifyMode, PreserveMetadata, CropRect } from '../../../../types';
@@ -86,8 +86,55 @@ export async function maybeMkDeepOutDir({ outputDir, fileOutPath }: { outputDir:
   if (actualOutputDir !== outputDir) await mkdir(actualOutputDir, { recursive: true });
 }
 
+/**
+ * Determine the best encoder to use based on preference and hardware availability
+ * When encoderPreference is 'auto', prefer hardware encoders if available, fallback to software
+ */
+async function selectEncoder(encoderPreference: 'auto' | string, sourceCodec: string, disableHardwareAcceleration: boolean): Promise<string> {
+  if (encoderPreference !== 'auto') {
+    return encoderPreference;
+  }
 
-function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect }: {
+  // If hardware acceleration is disabled, always use software encoder
+  if (disableHardwareAcceleration) {
+    console.log(`Auto encoder: hardware acceleration disabled, using source codec ${sourceCodec}`);
+    return sourceCodec;
+  }
+
+  // Auto mode: prefer hardware encoder if available for the source codec type
+  const { detectHardwareEncoders } = window.require('@electron/remote').require('./index.js');
+  const hardwareEncoders = await detectHardwareEncoders();
+
+  // Determine codec type from source codec
+  // Note: sourceCodec could be a codec name like "h264", "hevc", or encoder name like "libx264", "libsvtav1"
+  const codecType = sourceCodec.includes('264') || sourceCodec === 'h264' ? 'h264'
+    : sourceCodec.includes('265') || sourceCodec.includes('hevc') ? 'h265'
+    : sourceCodec.includes('av1') || sourceCodec === 'av01' ? 'av1' // av01 is the codec_name from ffprobe
+    : null;
+
+  console.log(`Auto encoder: source codec="${sourceCodec}", detected type="${codecType}", hardware encoders:`, hardwareEncoders);
+
+  // Try to use hardware encoder for the codec type, otherwise fallback to source codec
+  if (codecType === 'h264' && hardwareEncoders.h264) {
+    console.log(`Auto encoder: using hardware encoder ${hardwareEncoders.h264} for H.264`);
+    return hardwareEncoders.h264;
+  }
+  if (codecType === 'h265' && hardwareEncoders.h265) {
+    console.log(`Auto encoder: using hardware encoder ${hardwareEncoders.h265} for HEVC`);
+    return hardwareEncoders.h265;
+  }
+  if (codecType === 'av1' && hardwareEncoders.av1) {
+    console.log(`Auto encoder: using hardware encoder ${hardwareEncoders.av1} for AV1`);
+    return hardwareEncoders.av1;
+  }
+
+  // No hardware encoder available, use source codec (software encoder)
+  console.log(`Auto encoder: no hardware encoder available, using source codec ${sourceCodec}`);
+  return sourceCodec;
+}
+
+
+function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, isEncoding, lossyMode, enableOverwriteOutput, outputPlaybackRate, cutFromAdjustmentFrames, cutToAdjustmentFrames, appendLastCommandsLog, encCustomBitrate, appendFfmpegCommandLog, gifEncoder, gifFps, gifWidth, cropRect, encoderPreference, customEncoderCRF, disableHardwareAcceleration }: {
   filePath: string | undefined,
   treatInputFileModifiedTimeAsStart: boolean,
   treatOutputFileModifiedTimeAsStart: boolean | null | undefined,
@@ -104,6 +151,9 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
   cropRect: CropRect | null,
   encCustomBitrate: number | undefined,
   appendFfmpegCommandLog: (args: string[]) => void,
+  encoderPreference: 'auto' | string,
+  customEncoderCRF: number | undefined,
+  disableHardwareAcceleration: boolean,
 }) {
   const shouldSkipExistingFile = useCallback(async (path: string) => {
     const fileExists = await pathExists(path);
@@ -454,9 +504,15 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     function getVideoArgs({ streamIndex, outputIndex }: { streamIndex: number, outputIndex: number }) {
       if (streamIndex !== videoStreamIndex) return undefined;
 
+      // Use CRF mode for better quality (unless encoder doesn't support it)
+      const useCRF = supportsCRF(videoCodec);
+      const qualityArgs = useCRF
+        ? getEncoderQualityArgs(videoCodec, outputIndex, customEncoderCRF)
+        : [`-b:${outputIndex}`, String(videoBitrate)];
+
       const args = [
         `-c:${outputIndex}`, videoCodec,
-        `-b:${outputIndex}`, String(videoBitrate),
+        ...qualityArgs,
       ];
 
       // seems like ffmpeg handles this itself well when encoding same source file
@@ -592,8 +648,19 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           });
 
         const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopy });
-        const videoCodec = sourceCodecParams.videoCodec;
+        console.log('BEFORE selectEncoder - encoderPreference:', encoderPreference, 'sourceCodec:', sourceCodecParams.videoCodec, 'disableHW:', disableHardwareAcceleration);
+        // Use encoder preference (auto = prefer hardware, fallback to software)
+        const videoCodec = await selectEncoder(encoderPreference, sourceCodecParams.videoCodec, disableHardwareAcceleration);
+        console.log('AFTER selectEncoder - selected codec:', videoCodec);
         const videoBitrate = encCustomBitrate != null ? encCustomBitrate * 1000 : sourceCodecParams.videoBitrate;
+
+        // Use CRF mode for better quality when cropping (unless custom bitrate specified)
+        const useCRF = encCustomBitrate == null && supportsCRF(videoCodec);
+        const encoderArgs = useCRF
+          ? getEncoderQualityArgs(videoCodec, 0, customEncoderCRF) // outputIndex 0 for simple export
+          : [`-b:v`, String(videoBitrate)];
+
+        console.log(`Crop export using ${useCRF ? 'CRF' : 'bitrate'} mode with codec ${videoCodec}`);
 
         const ffmpegArgs = [
           '-hide_banner',
@@ -602,7 +669,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
           '-t', duration.toFixed(5),
           '-vf', cropFilter,
           '-c:v', videoCodec,
-          '-b:v', String(videoBitrate),
+          ...encoderArgs,
           '-c:a', 'copy',
           '-f', outFormat,
           '-y', finalOutPath,
@@ -636,7 +703,10 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
       const sourceCodecParams = await getCodecParams({ path: filePath, fileDuration, streams: streamsToCopyFromMainFile });
       const { videoStream, videoTimebase } = sourceCodecParams;
 
-      const videoCodec = lossyMode ? lossyMode.videoEncoder : sourceCodecParams.videoCodec;
+      // Determine video codec: lossyMode takes precedence, otherwise use encoder preference (auto = prefer hardware)
+      const videoCodec = lossyMode
+        ? lossyMode.videoEncoder
+        : await selectEncoder(encoderPreference, sourceCodecParams.videoCodec, disableHardwareAcceleration);
 
       const copyFileStreamsFiltered = [{
         path: filePath,
@@ -663,6 +733,12 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
 
       if (lossyMode) {
         console.log('Lossy mode: cutting/encoding the whole segment', { desiredCutFrom, cutTo });
+        return cutEncodeWholePart();
+      }
+
+      // Crop requires re-encoding every frame, so force encode whole segment (no Smart Cut)
+      if (cropRect) {
+        console.log('Crop mode: cutting/encoding the whole segment with crop filter', { desiredCutFrom, cutTo });
         return cutEncodeWholePart();
       }
 

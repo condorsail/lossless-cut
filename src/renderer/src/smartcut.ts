@@ -11,6 +11,135 @@ const { stat } = window.require('fs-extra');
 
 const mapVideoCodec = (codec: string) => ({ av1: 'libsvtav1' }[codec] ?? codec);
 
+/**
+ * Get optimal CRF value for a given encoder
+ * CRF = Constant Rate Factor (quality-based encoding)
+ * Lower = better quality, higher file size
+ *
+ * NVENC Hardware Requirements:
+ * - Maxwell (GTX 900): Basic NVENC, limited features
+ * - Pascal (GTX 10): H.264 B-frames, NO HEVC B-frames
+ * - Turing (RTX 20): Full features, HEVC B-frames, b_ref_mode, major quality upgrade
+ * - Ampere (RTX 30): Same NVENC as Turing
+ * - Ada (RTX 40): Same NVENC as Turing + AV1 encoding
+ */
+export function getOptimalCRF(encoder: string): number | undefined {
+  // Software encoders
+  if (encoder === 'libx264') return 23; // Default for x264, range 0-51, 18-28 typical
+  if (encoder === 'libx265') return 28; // Default for x265, range 0-51, 24-32 typical
+  if (encoder === 'libsvtav1') return 35; // SVT-AV1, range 0-63
+
+  // NVENC encoders (for post-processing, not streaming)
+  if (encoder === 'h264_nvenc') return 19; // CQ mode, range 0-51, high quality post-processing
+  if (encoder === 'hevc_nvenc') return 22; // CQ mode, range 0-51, "normal good" per NVIDIA
+  if (encoder === 'av1_nvenc') return 15; // CQ mode for AV1, NVIDIA recommends 15 for high quality
+
+  // VideoToolbox (macOS)
+  if (encoder === 'h264_videotoolbox') return undefined; // Uses quality parameter instead
+  if (encoder === 'hevc_videotoolbox') return undefined; // Uses quality parameter instead
+
+  // QuickSync
+  if (encoder === 'h264_qsv') return 23; // ICQ mode
+  if (encoder === 'hevc_qsv') return 28; // ICQ mode
+  if (encoder === 'av1_qsv') return 30; // ICQ mode
+
+  // VAAPI - limited CRF support
+  if (encoder.includes('vaapi')) return undefined; // VAAPI typically uses bitrate or qp
+
+  // AMF
+  if (encoder === 'h264_amf') return 23; // CQP mode
+  if (encoder === 'hevc_amf') return 28; // CQP mode
+  if (encoder === 'av1_amf') return 30; // CQP mode
+
+  return undefined; // Fallback to bitrate mode
+}
+
+/**
+ * Get optimal preset for a given encoder
+ * Presets control encoding speed vs compression efficiency
+ */
+export function getOptimalPreset(encoder: string): string | undefined {
+  // Software encoders
+  if (encoder === 'libx264') return 'medium'; // Options: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+  if (encoder === 'libx265') return 'medium'; // Same as x264
+  if (encoder === 'libsvtav1') return '6'; // Range 0-13, lower = slower/better (8 is default)
+
+  // NVENC encoders - use slower presets for post-processing quality
+  if (encoder === 'av1_nvenc') return 'p6'; // p1-p7, P6 for high quality without excessive slowdown
+  if (encoder.includes('nvenc')) return 'p6'; // P6: Slower (Better Quality) - NVIDIA recommendation
+
+  // VideoToolbox
+  if (encoder.includes('videotoolbox')) return undefined; // No preset equivalent
+
+  // QuickSync
+  if (encoder.includes('qsv')) return 'medium'; // Options: veryfast, faster, fast, medium, slow, slower, veryslow
+
+  // VAAPI
+  if (encoder.includes('vaapi')) return undefined; // Limited preset support
+
+  // AMF
+  if (encoder.includes('amf')) return 'balanced'; // Options: speed, balanced, quality
+
+  return undefined;
+}
+
+/**
+ * Check if encoder supports CRF/CQ mode
+ */
+export function supportsCRF(encoder: string): boolean {
+  return getOptimalCRF(encoder) !== undefined;
+}
+
+/**
+ * Get encoder-specific quality arguments for FFmpeg
+ */
+export function getEncoderQualityArgs(encoder: string, outputIndex: number, customCRF?: number, customPreset?: string): string[] {
+  const args: string[] = [];
+
+  const crf = customCRF ?? getOptimalCRF(encoder);
+  const preset = customPreset ?? getOptimalPreset(encoder);
+
+  // Add CRF/CQ parameter
+  if (crf !== undefined) {
+    if (encoder.includes('nvenc')) {
+      args.push(`-cq:${outputIndex}`, String(crf));
+
+      // Post-processing quality enhancements (not realtime, can afford the overhead)
+      // These features require Turing (RTX 20 series) or newer for best results
+      // Pascal (GTX 10 series) supports most features except HEVC B-frames
+      args.push(`-multipass:${outputIndex}`, 'qres'); // Quarter resolution lookahead
+      args.push(`-rc-lookahead:${outputIndex}`, '32'); // Max lookahead for quality (0-32)
+      args.push(`-spatial-aq:${outputIndex}`, '1'); // Spatial AQ for better quality
+      args.push(`-temporal-aq:${outputIndex}`, '1'); // Temporal AQ for motion quality
+
+      // B-frames and B-ref mode (Turing+)
+      // Note: Pascal supports H.264 B-frames but NOT HEVC B-frames
+      // If encoding fails on older hardware, ffmpeg will ignore unsupported flags
+      args.push(`-bf:${outputIndex}`, '2'); // 2 B-frames for quality
+      args.push(`-b_ref_mode:${outputIndex}`, 'middle'); // Use B-frames as reference (Turing+)
+    } else if (encoder.includes('qsv')) {
+      args.push(`-global_quality:${outputIndex}`, String(crf));
+    } else if (encoder.includes('amf')) {
+      args.push(`-qp_i:${outputIndex}`, String(crf), `-qp_p:${outputIndex}`, String(crf));
+    } else {
+      // Software encoders (libx264, libx265, libsvtav1)
+      args.push(`-crf:${outputIndex}`, String(crf));
+    }
+  }
+
+  // Add preset parameter
+  if (preset !== undefined) {
+    args.push(`-preset:${outputIndex}`, preset);
+  }
+
+  // VideoToolbox quality parameter (0.0-1.0, higher = better)
+  if (encoder.includes('videotoolbox')) {
+    args.push(`-q:${outputIndex}`, '65'); // 0-100 scale, 65 is good quality
+  }
+
+  return args;
+}
+
 export async function needsSmartCut({ path, desiredCutFrom, videoStream }: {
   path: string,
   desiredCutFrom: number,

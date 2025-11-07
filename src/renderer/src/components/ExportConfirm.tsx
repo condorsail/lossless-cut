@@ -134,10 +134,12 @@ function ExportConfirm({
 }) {
   const { t } = useTranslation();
 
-  const { changeOutDir, keyframeCut, toggleKeyframeCut, preserveMovData, setPreserveMovData, setFixCodecTag, fixCodecTag, preserveMetadata, setPreserveMetadata, preserveChapters, setPreserveChapters, movFastStart, setMovFastStart, avoidNegativeTs, setAvoidNegativeTs, autoDeleteMergedSegments, exportConfirmEnabled, toggleExportConfirmEnabled, segmentsToChapters, setSegmentsToChapters, preserveMetadataOnMerge, setPreserveMetadataOnMerge, enableSmartCut, setEnableSmartCut, effectiveExportMode, enableOverwriteOutput, setEnableOverwriteOutput, ffmpegExperimental, setFfmpegExperimental, cutFromAdjustmentFrames, setCutFromAdjustmentFrames, cutToAdjustmentFrames, setCutToAdjustmentFrames, setCutFileTemplate, setCutMergedFileTemplate, simpleMode, setGifEncoder, setGifFps, setGifWidth, gifEncoder, gifFps, gifWidth } = useUserSettings();
+    const { changeOutDir, keyframeCut, toggleKeyframeCut, preserveMovData, setPreserveMovData, setFixCodecTag, fixCodecTag, preserveMetadata, setPreserveMetadata, preserveChapters, setPreserveChapters, movFastStart, setMovFastStart, avoidNegativeTs, setAvoidNegativeTs, autoDeleteMergedSegments, exportConfirmEnabled, toggleExportConfirmEnabled, segmentsToChapters, setSegmentsToChapters, preserveMetadataOnMerge, setPreserveMetadataOnMerge, enableSmartCut, setEnableSmartCut, effectiveExportMode, enableOverwriteOutput, setEnableOverwriteOutput, ffmpegExperimental, setFfmpegExperimental, cutFromAdjustmentFrames, setCutFromAdjustmentFrames, cutToAdjustmentFrames, setCutToAdjustmentFrames, setCutFileTemplate, setCutMergedFileTemplate, simpleMode, setGifEncoder, setGifFps, setGifWidth, gifEncoder, gifFps, gifWidth, encoderPreference, setEncoderPreference, customEncoderCRF, setCustomEncoderCRF, disableHardwareAcceleration } = useUserSettings();
 
   const [showAdvanced, setShowAdvanced] = useState(!simpleMode);
   const [gifskiAvailable, setGifskiAvailable] = useState(false);
+  const [hardwareEncoders, setHardwareEncoders] = useState<{ h264?: string, h265?: string, av1?: string } | null>(null);
+  const [showEncoderOptions, setShowEncoderOptions] = useState(false);
 
   // Check if gifski is available on component mount
   useEffect(() => {
@@ -145,6 +147,19 @@ function ExportConfirm({
       checkGifskiAvailable().then(setGifskiAvailable).catch(() => setGifskiAvailable(false));
     }
   }, [outFormat, checkGifskiAvailable]);
+
+  // Detect available hardware encoders on component mount (unless disabled)
+  useEffect(() => {
+    if (disableHardwareAcceleration) {
+      setHardwareEncoders({});
+      return;
+    }
+    const { detectHardwareEncoders } = window.require('@electron/remote').require('./index.js');
+    detectHardwareEncoders().then(setHardwareEncoders).catch((err: Error) => {
+      console.error('Failed to detect hardware encoders:', err);
+      setHardwareEncoders({});
+    });
+  }, [disableHardwareAcceleration]);
 
   const isGif = outFormat === 'gif';
 
@@ -636,7 +651,7 @@ function ExportConfirm({
                 </>
               )}
 
-              {areWeCutting && (
+              {areWeCutting && !cropRect && (
                 <>
                   <AnimatedTr>
                     <td>
@@ -670,23 +685,83 @@ function ExportConfirm({
 
 
               {isEncoding && (
-                <AnimatedTr>
-                  <td>
-                    {t('Smart cut auto detect bitrate')}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                      {encBitrate != null && (
-                        <>
-                          <TextInput value={encBitrate} onChange={handleEncBitrateChange} style={{ width: '4em', flexGrow: 0, marginRight: '.3em' }} />
-                          <span style={{ marginRight: '.3em' }}>{t('kbit/s')}</span>
-                        </>
-                      )}
-                      <span><Switch checked={encBitrate == null} onCheckedChange={handleEncBitrateToggle} /></span>
-                    </div>
-                  </td>
-                  <td />
-                </AnimatedTr>
+                <>
+                  <AnimatedTr>
+                    <td>
+                      {t('Auto detect bitrate (when using CRF mode this is ignored)')}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                        {encBitrate != null && (
+                          <>
+                            <TextInput value={encBitrate} onChange={handleEncBitrateChange} style={{ width: '4em', flexGrow: 0, marginRight: '.3em' }} />
+                            <span style={{ marginRight: '.3em' }}>{t('kbit/s')}</span>
+                          </>
+                        )}
+                        <span><Switch checked={encBitrate == null} onCheckedChange={handleEncBitrateToggle} /></span>
+                      </div>
+                    </td>
+                    <td />
+                  </AnimatedTr>
+
+                  <AnimatedTr>
+                    <td>
+                      Encoder options
+                    </td>
+                    <td>
+                      <Switch checked={showEncoderOptions} onCheckedChange={setShowEncoderOptions} />
+                    </td>
+                    <td />
+                  </AnimatedTr>
+
+                  {showEncoderOptions && (
+                    <AnimatedTr>
+                      <td colSpan={3}>
+                        <div style={{ padding: '0.5em', backgroundColor: 'var(--gray-3)', borderRadius: '4px' }}>
+                          <div style={{ marginBottom: '0.5em', fontSize: '0.9em', color: 'var(--gray-11)' }}>
+                            Video encoder (default: match source codec):
+                          </div>
+                          <Select value={encoderPreference} onChange={(e) => setEncoderPreference(e.target.value)} style={{ width: '100%', marginBottom: '0.5em' }}>
+                            <option value="auto">Auto (match source)</option>
+                            <optgroup label="Hardware Encoders (Fast)">
+                              {hardwareEncoders?.h264 && <option value={hardwareEncoders.h264}>H.264 NVENC/QSV/VT - Fast</option>}
+                              {hardwareEncoders?.h265 && <option value={hardwareEncoders.h265}>HEVC NVENC/QSV/VT - Fast, smaller</option>}
+                              {hardwareEncoders?.av1 && <option value={hardwareEncoders.av1}>AV1 Hardware - Fast, smallest (RTX 40+)</option>}
+                              {(!hardwareEncoders?.h264 && !hardwareEncoders?.h265 && !hardwareEncoders?.av1) && (
+                                <option disabled>No hardware encoders detected</option>
+                              )}
+                            </optgroup>
+                            <optgroup label="Software Encoders (Best Quality)">
+                              <option value="libx264">H.264 (x264) - Best quality</option>
+                              <option value="libx265">HEVC (x265) - Best quality, smaller</option>
+                              <option value="libsvtav1">AV1 (SVT-AV1) - Best quality, smallest, slowest</option>
+                            </optgroup>
+                          </Select>
+
+                          <div style={{ marginTop: '0.5em', display: 'flex', alignItems: 'center', gap: '0.5em' }}>
+                            <span style={{ fontSize: '0.9em', color: 'var(--gray-11)', whiteSpace: 'nowrap' }}>Quality (CRF/CQP):</span>
+                            <input
+                              type="number"
+                              value={customEncoderCRF ?? ''}
+                              onChange={(e) => setCustomEncoderCRF(e.target.value ? Number(e.target.value) : undefined)}
+                              placeholder="Auto"
+                              min="0"
+                              max="51"
+                              style={{ width: '5em', padding: '0.25em' }}
+                            />
+                            <span style={{ fontSize: '0.85em', color: 'var(--gray-10)' }}>
+                              (Lower = higher quality, leave blank for optimal defaults)
+                            </span>
+                          </div>
+
+                          <div style={{ marginTop: '0.5em', fontSize: '0.85em', color: 'var(--gray-10)' }}>
+                            💡 Hardware encoding is much faster but slightly larger files. Software encoding is slower but best quality/compression.
+                          </div>
+                        </div>
+                      </td>
+                    </AnimatedTr>
+                  )}
+                </>
               )}
 
               {lossyMode != null && (

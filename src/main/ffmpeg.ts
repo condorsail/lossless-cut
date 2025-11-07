@@ -21,10 +21,13 @@ const runningFfmpegs = new Set<{
 // setInterval(() => console.log(runningFfmpegs.size), 1000);
 
 let customFfPath: string | undefined;
+let cachedHardwareEncoders: { h264?: string; h265?: string; av1?: string } | undefined;
 
 // Note that this does not work on MAS because of sandbox restrictions
 export function setCustomFfPath(path: string | undefined) {
   customFfPath = path;
+  // Clear hardware encoder cache when FFmpeg path changes, so it re-detects with new FFmpeg
+  cachedHardwareEncoders = undefined;
 }
 
 function escapeCliArg(arg: string) {
@@ -688,3 +691,62 @@ export async function downloadMediaUrl(url: string | string[], outPath: string) 
 
 // Don't pass complex objects over the bridge (the process), so just convert it to a promise
 export const runFfmpeg = async (...args: Parameters<typeof runFfmpegProcess>) => runFfmpegProcess(...args);
+
+export interface HardwareEncoderInfo {
+  h264?: string; // e.g., 'h264_nvenc', 'h264_videotoolbox', 'h264_qsv', etc.
+  h265?: string; // e.g., 'hevc_nvenc', 'hevc_videotoolbox', 'hevc_qsv', etc.
+  av1?: string;  // e.g., 'av1_nvenc' (RTX 4000+), 'av1_qsv', etc.
+}
+
+/**
+ * Detects available hardware encoders by querying ffmpeg
+ * Caches the result for performance
+ */
+export async function detectHardwareEncoders(): Promise<HardwareEncoderInfo> {
+  if (cachedHardwareEncoders != null) return cachedHardwareEncoders;
+
+  const result: HardwareEncoderInfo = {};
+
+  try {
+    const { stdout } = await execa(getFfmpegPath(), ['-encoders'], { encoding: 'utf8' });
+    const encoderList = stdout;
+
+    // Priority order for each codec (prefer hardware over software)
+    const h264Candidates = ['h264_nvenc', 'h264_videotoolbox', 'h264_qsv', 'h264_vaapi', 'h264_amf'];
+    const h265Candidates = ['hevc_nvenc', 'hevc_videotoolbox', 'hevc_qsv', 'hevc_vaapi', 'hevc_amf'];
+    const av1Candidates = ['av1_nvenc', 'av1_qsv', 'av1_vaapi', 'av1_amf']; // RTX 4000+ support
+
+    // Find first available H.264 hardware encoder
+    for (const encoder of h264Candidates) {
+      // Match pattern like: " V....D h264_nvenc" where V=video, and next 5 chars are capability flags
+      // Flags can be dots or letters (e.g., D=decoder, E=encoder, etc.)
+      if (new RegExp(`\\s+V.{5}\\s+${encoder}\\s`).test(encoderList)) {
+        result.h264 = encoder;
+        break;
+      }
+    }
+
+    // Find first available H.265/HEVC hardware encoder
+    for (const encoder of h265Candidates) {
+      if (new RegExp(`\\s+V.{5}\\s+${encoder}\\s`).test(encoderList)) {
+        result.h265 = encoder;
+        break;
+      }
+    }
+
+    // Find first available AV1 hardware encoder (RTX 4000 series, Intel Arc, etc.)
+    for (const encoder of av1Candidates) {
+      if (new RegExp(`\\s+V.{5}\\s+${encoder}\\s`).test(encoderList)) {
+        result.av1 = encoder;
+        break;
+      }
+    }
+
+    logger.info('Detected hardware encoders:', result);
+  } catch (error) {
+    logger.error('Failed to detect hardware encoders:', error instanceof Error ? error.message : error);
+  }
+
+  cachedHardwareEncoders = result;
+  return result;
+}

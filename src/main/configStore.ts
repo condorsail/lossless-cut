@@ -174,6 +174,9 @@ const defaults: Config = {
   gifFps: 10,
   gifWidth: 480,
   cropEnabled: false,
+  encoderPreference: 'auto', // 'auto' = prefer hardware encoders, fallback to software
+  customEncoderCRF: undefined, // undefined = use optimal defaults per encoder
+  disableHardwareAcceleration: false, // false = allow hardware encoders (NVENC, QuickSync, etc)
 };
 
 const configFileName = 'config.json'; // note: this is also hard-coded inside electron-store

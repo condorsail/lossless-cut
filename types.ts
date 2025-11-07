@@ -58,6 +58,15 @@ export interface CropRect {
   height: number,
 }
 
+export interface EncoderSettings {
+  encoder: string;
+  // CRF mode (constant quality) - preferred for quality
+  crf?: number;
+  preset?: string;
+  // Bitrate mode (fallback if CRF not supported)
+  bitrate?: number;
+}
+
 
 export interface Config {
   version: number,
@@ -141,6 +150,9 @@ export interface Config {
   gifFps: number,
   gifWidth: number,
   cropEnabled: boolean,
+  encoderPreference: 'auto' | string, // 'auto' or specific encoder like 'h264_nvenc', 'libx264', etc
+  customEncoderCRF: number | undefined, // Custom CRF/CQP value, undefined = use optimal defaults
+  disableHardwareAcceleration: boolean, // Disable hardware encoders globally (NVENC, QuickSync, VideoToolbox, etc)
 }
 
 export interface Waveform {

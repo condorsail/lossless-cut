@@ -33,6 +33,7 @@ import './i18n.js';
 import { ApiActionRequest } from '../../types.js';
 
 export * as ffmpeg from './ffmpeg.js';
+export { detectHardwareEncoders } from './ffmpeg.js';
 
 export * as i18n from './i18nCommon.js';
 
@@ -240,7 +241,34 @@ function parseCliArgs(rawArgv = process.argv) {
 
 const argv = parseCliArgs();
 
-const lossyModeSchema = z.object({ videoEncoder: z.union([z.literal('libx264'), z.literal('libx265'), z.literal('libsvtav1')]) });
+// Expanded encoder schema to include hardware encoders
+const lossyModeSchema = z.object({
+  videoEncoder: z.union([
+    // Software encoders
+    z.literal('libx264'),
+    z.literal('libx265'),
+    z.literal('libsvtav1'),
+    // Hardware encoders - NVENC (NVIDIA)
+    z.literal('h264_nvenc'),
+    z.literal('hevc_nvenc'),
+    z.literal('av1_nvenc'),    // RTX 4000 series+
+    // Hardware encoders - VideoToolbox (macOS)
+    z.literal('h264_videotoolbox'),
+    z.literal('hevc_videotoolbox'),
+    // Hardware encoders - QuickSync (Intel)
+    z.literal('h264_qsv'),
+    z.literal('hevc_qsv'),
+    z.literal('av1_qsv'),
+    // Hardware encoders - VAAPI (Linux)
+    z.literal('h264_vaapi'),
+    z.literal('hevc_vaapi'),
+    z.literal('av1_vaapi'),
+    // Hardware encoders - AMF (AMD)
+    z.literal('h264_amf'),
+    z.literal('hevc_amf'),
+    z.literal('av1_amf'),
+  ])
+});
 // eslint-disable-next-line prefer-destructuring
 const lossyMode = argv['lossyMode'] ? lossyModeSchema.parse(JSON5.parse(argv['lossyMode'])) : undefined;
 export { lossyMode };
