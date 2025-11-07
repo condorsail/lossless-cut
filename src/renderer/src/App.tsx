@@ -616,7 +616,9 @@ function App() {
   const shouldShowWaveform = calcShouldShowWaveform(zoomedDuration) || overviewWaveform != null;
 
   const areWeCutting = useMemo(() => segmentsToExport.some(({ start, end }) => isCuttingStart(start) || isCuttingEnd(end, fileDuration)), [fileDuration, segmentsToExport]);
-  const needSmartCut = areWeCutting && enableSmartCut;
+  // Smart Cut is incompatible with crop - crop requires re-encoding every frame
+  // If crop is active, disable Smart Cut to ensure crop is applied throughout
+  const needSmartCut = areWeCutting && enableSmartCut && !(cropMode && cropRect != null);
   // Crop requires re-encoding, so include it in isEncoding
   const isEncoding = needSmartCut || lossyMode != null || (cropMode && cropRect != null);
 
