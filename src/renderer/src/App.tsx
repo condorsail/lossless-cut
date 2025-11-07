@@ -80,7 +80,7 @@ import {
 import getSwal, { errorToast, showPlaybackFailedMessage } from './swal';
 import { adjustRate } from './util/rate-calculator';
 import { askExtractFramesAsImages } from './dialogs/extractFrames';
-import { askForOutDir, askForImportChapters, askForFileOpenAction, showCleanupFilesDialog, showDiskFull, showExportFailedDialog, showConcatFailedDialog, openYouTubeChaptersDialog, showRefuseToOverwrite, showOpenDialog, showMuxNotSupported, promptDownloadMediaUrl, CleanupChoicesType, showOutputNotWritable } from './dialogs';
+import { askForOutDir, askForImportChapters, askForFileOpenAction, showCleanupFilesDialog, showDiskFull, showExportFailedDialog, showConcatFailedDialog, openYouTubeChaptersDialog, showRefuseToOverwrite, showOpenDialog, showMuxNotSupported, promptDownloadMediaUrl, downloadAndProcessMediaUrl, importFromClipboard, CleanupChoicesType, showOutputNotWritable } from './dialogs';
 import { openSendReportDialog } from './reporting';
 import { fallbackLng } from './i18n';
 import { sortSegments, convertSegmentsToChaptersWithGaps, hasAnySegmentOverlap, isDurationValid, getPlaybackAction, getSegmentTags, filterNonMarkers } from './segments';
@@ -1946,22 +1946,57 @@ function App() {
   }, [currentSegIndexSafe, onEditSegmentTags]);
 
   const promptDownloadMediaUrlWrapper = useCallback(async () => {
-    try {
+    await withErrorHandling(async () => {
+      const newCustomOutDir = await ensureWritableOutDir({ outDir: customOutDir });
+      if (newCustomOutDir == null) {
+        errorToast(i18n.t('Please select a working directory first'));
+        return;
+      }
+
       setWorking({ text: t('Downloading URL') });
-      await withErrorHandling(async () => {
-        const newCustomOutDir = await ensureWritableOutDir({ outDir: customOutDir });
-        if (newCustomOutDir == null) {
-          errorToast(i18n.t('Please select a working directory first'));
-          return;
-        }
-        const outPath = getDownloadMediaOutPath(newCustomOutDir, `downloaded-media-${Date.now()}.mkv`);
-        const downloaded = await promptDownloadMediaUrl(outPath);
-        if (downloaded) await loadMedia({ filePath: outPath });
-      }, i18n.t('Failed to download URL'));
-    } finally {
-      setWorking();
-    }
-  }, [customOutDir, ensureWritableOutDir, loadMedia, setWorking, t, withErrorHandling]);
+      const outPath = getDownloadMediaOutPath(newCustomOutDir, `downloaded-media-${Date.now()}.mkv`);
+      let downloaded = false;
+      try {
+        downloaded = await promptDownloadMediaUrl(outPath);
+      } finally {
+        setWorking(); // Clear working state before opening file
+      }
+
+      if (downloaded) {
+        await userOpenFiles([outPath]);
+      }
+    }, i18n.t('Failed to download URL'));
+  }, [customOutDir, ensureWritableOutDir, setWorking, t, userOpenFiles, withErrorHandling]);
+
+  const importFromClipboardWrapper = useCallback(async () => {
+    await withErrorHandling(async () => {
+      await importFromClipboard({
+        openFilePath: async (path: string) => {
+          await userOpenFiles([path]);
+        },
+        downloadMediaUrl: async (url: string) => {
+          const newCustomOutDir = await ensureWritableOutDir({ outDir: customOutDir });
+          if (newCustomOutDir == null) {
+            errorToast(i18n.t('Please select a working directory first'));
+            return;
+          }
+
+          setWorking({ text: t('Downloading URL') });
+          const outPath = getDownloadMediaOutPath(newCustomOutDir, `downloaded-media-${Date.now()}.mkv`);
+          let downloaded = false;
+          try {
+            downloaded = await downloadAndProcessMediaUrl(url, outPath);
+          } finally {
+            setWorking(); // Clear working state before opening file
+          }
+
+          if (downloaded) {
+            await userOpenFiles([outPath]);
+          }
+        },
+      });
+    }, i18n.t('Failed to import from clipboard'));
+  }, [customOutDir, ensureWritableOutDir, setWorking, t, userOpenFiles, withErrorHandling]);
 
   type MainKeyboardAction = Exclude<KeyboardAction, 'closeActiveScreen' | 'toggleKeyboardShortcuts' | 'goToTimecodeDirect'>;
 
@@ -2329,6 +2364,7 @@ function App() {
         importEdlFile,
         exportEdlFile: tryExportEdlFile,
         promptDownloadMediaUrl: promptDownloadMediaUrlWrapper,
+        importFromClipboard: importFromClipboardWrapper,
       }).map(([key, fn]) => [
         key,
         async (...args: unknown[]) => {
@@ -2387,7 +2423,7 @@ function App() {
       ipcActions.forEach(([key, action]) => electron.ipcRenderer.off(key, action));
       electron.ipcRenderer.off('apiAction', tryApiAction);
     };
-  }, [checkFileOpened, customOutDir, detectedFps, filePath, getFrameCount, getKeyboardAction, goToTimecodeDirect, handleError, importEdlFile, loadCutSegments, mainActions, promptDownloadMediaUrlWrapper, selectedSegments, toggleKeyboardShortcuts, tryExportEdlFile, userOpenFiles]);
+  }, [checkFileOpened, customOutDir, detectedFps, filePath, getFrameCount, getKeyboardAction, goToTimecodeDirect, handleError, importEdlFile, importFromClipboardWrapper, loadCutSegments, mainActions, promptDownloadMediaUrlWrapper, selectedSegments, toggleKeyboardShortcuts, tryExportEdlFile, userOpenFiles]);
 
   const handleBatchFilesDrop = useCallback<DragEventHandler<HTMLDivElement>>(async (ev) => {
     ev.preventDefault();

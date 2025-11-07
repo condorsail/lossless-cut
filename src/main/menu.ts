@@ -42,6 +42,13 @@ export default ({ app, mainWindow, newVersion, isStoreBuild }: {
             mainWindow.webContents.send('promptDownloadMediaUrl');
           },
         },
+        {
+          label: esc(t('Import from clipboard')),
+          accelerator: 'CmdOrCtrl+Shift+V',
+          async click() {
+            mainWindow.webContents.send('importFromClipboard');
+          },
+        },
         { type: 'separator' },
         {
           label: esc(t('Close')),
